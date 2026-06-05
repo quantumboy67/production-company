@@ -15,9 +15,18 @@
 ## Dashboard
 
 - [ ] Confirm dashboard loads after sign-in.
-- [ ] Confirm upcoming event count appears.
+- [ ] Confirm top summary cards appear for next event, projected P/L, actual / entered P/L, and overdue tasks placeholder.
+- [ ] Confirm monthly calendar appears.
+- [ ] Confirm today is visually distinct.
+- [ ] Confirm previous/next month navigation works.
 - [ ] Confirm the seeded `Cedric Burnside @ Fairweather` event appears after profile setup.
-- [ ] Confirm the beta focus note appears and points users toward budgets, revenue, ticket tiers, and settlement tracking.
+- [ ] Navigate to September 2026 and confirm `Cedric Burnside @ Fairweather` appears on its event date.
+- [ ] Click the Cedric event date and confirm the selected-date panel lists the event.
+- [ ] Click the event from the selected-date panel and confirm it opens event detail.
+- [ ] Click `Add event on this date` and confirm the New Event form prefills the selected start date.
+- [ ] Click `Show all upcoming events` and confirm the financial list appears.
+- [ ] Confirm the upcoming list includes projected revenue, estimated expenses, projected net, actual / entered revenue, actual / paid expenses, and actual / entered net.
+- [ ] Confirm the print button is visible when the upcoming list is open.
 - [ ] If an organization is empty, click `Create demo event` and confirm demo data appears.
 
 ## Event CRUD

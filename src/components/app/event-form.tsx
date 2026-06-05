@@ -9,9 +9,10 @@ import type { EventRecord } from "@/lib/types";
 type Props = {
   event?: EventRecord;
   error?: string;
+  defaultStartDate?: string;
 };
 
-export function EventForm({ event, error }: Props) {
+export function EventForm({ event, error, defaultStartDate }: Props) {
   const action = event ? updateEvent : createEvent;
 
   return (
@@ -29,7 +30,7 @@ export function EventForm({ event, error }: Props) {
           </div>
           <div>
             <Label htmlFor="starts_on">Start date</Label>
-            <Input id="starts_on" name="starts_on" type="date" defaultValue={event?.starts_on} required />
+            <Input id="starts_on" name="starts_on" type="date" defaultValue={event?.starts_on ?? defaultStartDate} required />
           </div>
           <div>
             <Label htmlFor="ends_on">End date</Label>

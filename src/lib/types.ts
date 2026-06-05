@@ -68,3 +68,18 @@ export type ContactOption = {
   name: string;
   company: string | null;
 };
+
+export type EventProfitLoss = {
+  projectedRevenue: number;
+  estimatedExpenses: number;
+  projectedNet: number;
+  actualRevenue: number;
+  actualExpenses: number;
+  actualNet: number;
+  missingActualRevenueCount: number;
+  missingActualExpenseCount: number;
+};
+
+export type DashboardEvent = EventRecord & {
+  financials: EventProfitLoss;
+};

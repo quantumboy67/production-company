@@ -1,6 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/supabase/auth";
-import type { BudgetItem, ContactOption, EventRecord, RevenueItem, Settlement, TicketTier } from "@/lib/types";
+import type {
+  BudgetItem,
+  ContactOption,
+  DashboardEvent,
+  EventProfitLoss,
+  EventRecord,
+  RevenueItem,
+  Settlement,
+  TicketTier,
+} from "@/lib/types";
 
 export async function listEvents() {
   const profile = await getProfile();
@@ -13,6 +22,54 @@ export async function listEvents() {
 
   if (error) throw new Error(error.message);
   return (data ?? []).map(normalizeEvent);
+}
+
+export async function listDashboardEvents(): Promise<DashboardEvent[]> {
+  const profile = await getProfile();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, organization_id, venue_id, name, starts_on, ends_on, status, capacity, notes, venues(name)")
+    .eq("organization_id", profile.organization_id)
+    .order("starts_on", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const events = (data ?? []).map(normalizeEvent);
+  const eventIds = events.map((event) => event.id);
+
+  if (eventIds.length === 0) return [];
+
+  const [budget, revenue, tickets] = await Promise.all([
+    supabase
+      .from("budget_items")
+      .select("event_id, estimated_amount, actual_amount")
+      .eq("organization_id", profile.organization_id)
+      .in("event_id", eventIds),
+    supabase
+      .from("revenue_items")
+      .select("event_id, projected_amount, actual_amount")
+      .eq("organization_id", profile.organization_id)
+      .in("event_id", eventIds),
+    supabase
+      .from("ticket_tiers")
+      .select("event_id, projected_gross, generated_gross")
+      .eq("organization_id", profile.organization_id)
+      .in("event_id", eventIds),
+  ]);
+
+  for (const result of [budget, revenue, tickets]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+
+  return events.map((event) => ({
+    ...event,
+    financials: calculateEventProfitLoss({
+      budgetItems: (budget.data ?? []).filter((item) => item.event_id === event.id),
+      revenueItems: (revenue.data ?? []).filter((item) => item.event_id === event.id),
+      ticketTiers: (tickets.data ?? []).filter((item) => item.event_id === event.id),
+    }),
+  }));
 }
 
 export async function getEvent(id: string) {
@@ -126,5 +183,49 @@ export function calculateSettlement(input: {
     breakEven: totalExpenses,
     partnerAAmount: netProfit > 0 ? netProfit * (partnerAPercent / 100) : 0,
     partnerBAmount: netProfit > 0 ? netProfit * (partnerBPercent / 100) : 0,
+  };
+}
+
+export function calculateEventProfitLoss(input: {
+  budgetItems: Array<Pick<BudgetItem, "estimated_amount" | "actual_amount">>;
+  revenueItems: Array<Pick<RevenueItem, "projected_amount" | "actual_amount">>;
+  ticketTiers: Array<Pick<TicketTier, "projected_gross" | "generated_gross">>;
+}): EventProfitLoss {
+  const projectedTicketGross = input.ticketTiers.reduce(
+    (sum, tier) => sum + Number(tier.projected_gross ?? 0),
+    0,
+  );
+  const actualTicketGross = input.ticketTiers.reduce(
+    (sum, tier) => sum + Number(tier.generated_gross ?? 0),
+    0,
+  );
+  const projectedRevenueItems = input.revenueItems.reduce(
+    (sum, item) => sum + Number(item.projected_amount ?? 0),
+    0,
+  );
+  const actualRevenueItems = input.revenueItems.reduce(
+    (sum, item) => sum + Number(item.actual_amount ?? 0),
+    0,
+  );
+  const estimatedExpenses = input.budgetItems.reduce(
+    (sum, item) => sum + Number(item.estimated_amount ?? 0),
+    0,
+  );
+  const actualExpenses = input.budgetItems.reduce(
+    (sum, item) => sum + Number(item.actual_amount ?? 0),
+    0,
+  );
+  const projectedRevenue = projectedTicketGross + projectedRevenueItems;
+  const actualRevenue = actualTicketGross + actualRevenueItems;
+
+  return {
+    projectedRevenue,
+    estimatedExpenses,
+    projectedNet: projectedRevenue - estimatedExpenses,
+    actualRevenue,
+    actualExpenses,
+    actualNet: actualRevenue - actualExpenses,
+    missingActualRevenueCount: input.revenueItems.filter((item) => item.actual_amount === null).length,
+    missingActualExpenseCount: input.budgetItems.filter((item) => item.actual_amount === null).length,
   };
 }
