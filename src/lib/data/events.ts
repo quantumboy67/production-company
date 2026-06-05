@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/supabase/auth";
-import type { BudgetItem, EventRecord, RevenueItem, Settlement, TicketTier } from "@/lib/types";
+import type { BudgetItem, ContactOption, EventRecord, RevenueItem, Settlement, TicketTier } from "@/lib/types";
 
 export async function listEvents() {
   const profile = await getProfile();
@@ -32,10 +32,10 @@ export async function getEvent(id: string) {
 export async function getEventFinancials(eventId: string) {
   const profile = await getProfile();
   const supabase = await createClient();
-  const [budget, revenue, tickets, settlement] = await Promise.all([
+  const [budget, revenue, tickets, settlement, contacts] = await Promise.all([
     supabase
       .from("budget_items")
-      .select("id, cost_type, category, description, estimated_amount, actual_amount, status, due_date, paid_date, notes, contacts!budget_items_vendor_contact_id_fkey(name)")
+      .select("id, vendor_contact_id, cost_type, category, description, estimated_amount, actual_amount, status, due_date, paid_date, notes, contacts!budget_items_vendor_contact_id_fkey(name)")
       .eq("event_id", eventId)
       .eq("organization_id", profile.organization_id)
       .order("cost_type", { ascending: true })
@@ -58,9 +58,14 @@ export async function getEventFinancials(eventId: string) {
       .eq("event_id", eventId)
       .eq("organization_id", profile.organization_id)
       .maybeSingle(),
+    supabase
+      .from("contacts")
+      .select("id, name, company")
+      .eq("organization_id", profile.organization_id)
+      .order("name", { ascending: true }),
   ]);
 
-  for (const result of [budget, revenue, tickets, settlement]) {
+  for (const result of [budget, revenue, tickets, settlement, contacts]) {
     if (result.error) throw new Error(result.error.message);
   }
 
@@ -69,6 +74,7 @@ export async function getEventFinancials(eventId: string) {
     revenueItems: (revenue.data ?? []) as RevenueItem[],
     ticketTiers: (tickets.data ?? []) as TicketTier[],
     settlement: settlement.data as Settlement | null,
+    contacts: (contacts.data ?? []) as ContactOption[],
   };
 }
 

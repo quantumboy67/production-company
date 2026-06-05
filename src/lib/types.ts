@@ -1,6 +1,7 @@
 export type EventStatus = "planning" | "confirmed" | "active" | "settled" | "cancelled";
 export type ItemStatus = "planned" | "quoted" | "approved" | "due" | "paid" | "cancelled";
 export type RevenueStatus = "projected" | "confirmed" | "received";
+export type PartnerSplitType = "true_50_50" | "sweat_equity" | "siloed_revenue_streams" | "custom";
 
 export type EventRecord = {
   id: string;
@@ -17,6 +18,7 @@ export type EventRecord = {
 
 export type BudgetItem = {
   id: string;
+  vendor_contact_id: string | null;
   cost_type: "hard" | "soft";
   category: string;
   description: string;
@@ -31,7 +33,7 @@ export type BudgetItem = {
 
 export type RevenueItem = {
   id: string;
-  source: string;
+  source: "ticket" | "sponsorship" | "bar_bounty" | "merch_split" | "other";
   description: string;
   projected_amount: number;
   actual_amount: number | null;
@@ -53,10 +55,16 @@ export type TicketTier = {
 
 export type Settlement = {
   id: string;
-  partner_split_type: "true_50_50" | "sweat_equity" | "siloed_revenue_streams" | "custom";
+  partner_split_type: PartnerSplitType;
   partner_a_name: string | null;
   partner_b_name: string | null;
   partner_a_percent: number;
   partner_b_percent: number;
   notes: string | null;
+};
+
+export type ContactOption = {
+  id: string;
+  name: string;
+  company: string | null;
 };

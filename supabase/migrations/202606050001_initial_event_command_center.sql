@@ -269,13 +269,30 @@ create trigger touch_sponsorships_updated_at before update on public.sponsorship
 create trigger touch_tasks_updated_at before update on public.tasks for each row execute function public.touch_updated_at();
 create trigger touch_run_of_show_items_updated_at before update on public.run_of_show_items for each row execute function public.touch_updated_at();
 
+create schema if not exists app_private;
+
+create or replace function app_private.current_organization_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select profiles.organization_id
+  from public.profiles
+  where profiles.id = auth.uid()
+$$;
+
+grant usage on schema app_private to authenticated;
+grant execute on function app_private.current_organization_id() to authenticated;
+
 create or replace function public.current_organization_id()
 returns uuid
 language sql
 stable
-set search_path = public
+set search_path = ''
 as $$
-  select organization_id from public.profiles where id = auth.uid()
+  select app_private.current_organization_id()
 $$;
 
 alter table public.organizations enable row level security;
@@ -298,7 +315,7 @@ alter table public.task_templates enable row level security;
 
 create policy "members can read their organization"
 on public.organizations for select
-using (id = public.current_organization_id() or created_by = auth.uid());
+using (id = app_private.current_organization_id() or created_by = auth.uid());
 
 create policy "authenticated users can create organizations"
 on public.organizations for insert
@@ -306,12 +323,12 @@ with check (created_by = auth.uid());
 
 create policy "members can update their organization"
 on public.organizations for update
-using (id = public.current_organization_id() or created_by = auth.uid())
-with check (id = public.current_organization_id() or created_by = auth.uid());
+using (id = app_private.current_organization_id() or created_by = auth.uid())
+with check (id = app_private.current_organization_id() or created_by = auth.uid());
 
 create policy "profiles can read organization profiles"
 on public.profiles for select
-using (organization_id = public.current_organization_id() or id = auth.uid());
+using (organization_id = app_private.current_organization_id() or id = auth.uid());
 
 create policy "profiles can update self"
 on public.profiles for update
@@ -319,7 +336,7 @@ using (id = auth.uid())
 with check (
   id = auth.uid()
   and (
-    organization_id = public.current_organization_id()
+    organization_id = app_private.current_organization_id()
     or exists (
       select 1
       from public.organizations
@@ -362,10 +379,10 @@ begin
     'contracts', 'sponsorships', 'tasks', 'run_of_show_items'
   ]
   loop
-    execute format('create policy "members can read org rows" on public.%I for select using (organization_id = public.current_organization_id())', table_name);
-    execute format('create policy "members can insert org rows" on public.%I for insert with check (organization_id = public.current_organization_id())', table_name);
-    execute format('create policy "members can update org rows" on public.%I for update using (organization_id = public.current_organization_id()) with check (organization_id = public.current_organization_id())', table_name);
-    execute format('create policy "members can delete org rows" on public.%I for delete using (organization_id = public.current_organization_id())', table_name);
+    execute format('create policy "members can read org rows" on public.%I for select using (organization_id = app_private.current_organization_id())', table_name);
+    execute format('create policy "members can insert org rows" on public.%I for insert with check (organization_id = app_private.current_organization_id())', table_name);
+    execute format('create policy "members can update org rows" on public.%I for update using (organization_id = app_private.current_organization_id()) with check (organization_id = app_private.current_organization_id())', table_name);
+    execute format('create policy "members can delete org rows" on public.%I for delete using (organization_id = app_private.current_organization_id())', table_name);
   end loop;
 end $$;
 
@@ -429,7 +446,7 @@ support as (
 ),
 event as (
   insert into public.events (organization_id, venue_id, name, starts_on, ends_on, status, capacity, notes)
-  select organization_id, id, 'Cedric Burnside @ Fairweather', '2026-09-18', '2026-09-19', 'planning', 900, 'Two-night event seed record.'
+  select organization_id, id, 'Cedric Burnside @ Fairweather', '2026-09-18', '2026-09-19', 'planning'::public.event_status, 900, 'Two-night event seed record.'
   from venue
   returning id, organization_id
 )
@@ -441,23 +458,23 @@ with event as (
   select id, organization_id from public.events where name = 'Cedric Burnside @ Fairweather'
 )
 insert into public.budget_items (organization_id, event_id, cost_type, category, description, estimated_amount, actual_amount, status, notes)
-select organization_id, id, 'hard', 'Headliner Guarantee', 'Cedric Burnside headliner guarantee', 10000, null, 'approved', 'Seeded guarantee.'
+select organization_id, id, 'hard', 'Headliner Guarantee', 'Cedric Burnside headliner guarantee', 10000, null::numeric, 'approved'::public.item_status, 'Seeded guarantee.'
 from event
-union all select organization_id, id, 'hard', 'Support Act', 'The Sugar Thieves opening band', 1500, null, 'planned', 'Phoenix support act.' from event
-union all select organization_id, id, 'hard', 'Production', 'PA, lights, stage package', 4200, null, 'quoted', null from event
-union all select organization_id, id, 'hard', 'Production Labor', 'Stagehands and audio engineer', 2200, null, 'quoted', null from event
-union all select organization_id, id, 'hard', 'Backline', 'Drum kit and amps', 900, null, 'planned', null from event
-union all select organization_id, id, 'hard', 'Security', 'Door and floor security', 1800, null, 'planned', null from event
-union all select organization_id, id, 'hard', 'Insurance', 'Event liability policy', 650, null, 'planned', null from event
-union all select organization_id, id, 'soft', 'Marketing', 'Campaign management', 1200, null, 'planned', null from event
-union all select organization_id, id, 'soft', 'Social Media Ads', 'Paid social ads', 1600, null, 'planned', null from event
-union all select organization_id, id, 'soft', 'Graphic Design', 'Poster and digital assets', 450, null, 'planned', null from event
-union all select organization_id, id, 'soft', 'Print Posters', 'Street team print run', 350, null, 'planned', null from event
-union all select organization_id, id, 'soft', 'Hotel', 'Artist lodging', 1100, null, 'planned', null from event
-union all select organization_id, id, 'soft', 'Meals', 'Artist and crew meals', 650, null, 'planned', null from event
-union all select organization_id, id, 'soft', 'Green Room Rider', 'Hospitality rider', 500, null, 'planned', null from event
-union all select organization_id, id, 'soft', 'Ground Transportation', 'Airport and hotel transportation', 500, null, 'planned', null from event
-union all select organization_id, id, 'soft', 'Contingency', 'Unplanned costs', 1000, null, 'planned', null from event;
+union all select organization_id, id, 'hard', 'Support Act', 'The Sugar Thieves opening band', 1500, null::numeric, 'planned'::public.item_status, 'Phoenix support act.' from event
+union all select organization_id, id, 'hard', 'Production', 'PA, lights, stage package', 4200, null::numeric, 'quoted'::public.item_status, null from event
+union all select organization_id, id, 'hard', 'Production Labor', 'Stagehands and audio engineer', 2200, null::numeric, 'quoted'::public.item_status, null from event
+union all select organization_id, id, 'hard', 'Backline', 'Drum kit and amps', 900, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'hard', 'Security', 'Door and floor security', 1800, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'hard', 'Insurance', 'Event liability policy', 650, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'soft', 'Marketing', 'Campaign management', 1200, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'soft', 'Social Media Ads', 'Paid social ads', 1600, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'soft', 'Graphic Design', 'Poster and digital assets', 450, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'soft', 'Print Posters', 'Street team print run', 350, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'soft', 'Hotel', 'Artist lodging', 1100, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'soft', 'Meals', 'Artist and crew meals', 650, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'soft', 'Green Room Rider', 'Hospitality rider', 500, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'soft', 'Ground Transportation', 'Airport and hotel transportation', 500, null::numeric, 'planned'::public.item_status, null from event
+union all select organization_id, id, 'soft', 'Contingency', 'Unplanned costs', 1000, null::numeric, 'planned'::public.item_status, null from event;
 
 with event as (
   select id, organization_id from public.events where name = 'Cedric Burnside @ Fairweather'
@@ -470,15 +487,15 @@ with event as (
   select id, organization_id from public.events where name = 'Cedric Burnside @ Fairweather'
 )
 insert into public.revenue_items (organization_id, event_id, source, description, projected_amount, status)
-select organization_id, id, 'bar_bounty', 'Bar bounty estimate', 2500, 'projected' from event
-union all select organization_id, id, 'merch_split', 'Merchandise split estimate', 1200, 'projected' from event
-union all select organization_id, id, 'sponsorship', 'Local sponsor target', 5000, 'projected' from event;
+select organization_id, id, 'bar_bounty', 'Bar bounty estimate', 2500, 'projected'::public.revenue_status from event
+union all select organization_id, id, 'merch_split', 'Merchandise split estimate', 1200, 'projected'::public.revenue_status from event
+union all select organization_id, id, 'sponsorship', 'Local sponsor target', 5000, 'projected'::public.revenue_status from event;
 
 with event as (
   select id, organization_id from public.events where name = 'Cedric Burnside @ Fairweather'
 )
 insert into public.settlements (organization_id, event_id, partner_split_type, partner_a_name, partner_b_name, partner_a_percent, partner_b_percent, notes)
-select organization_id, id, 'true_50_50', 'Production Company', 'Venue Partner', 50, 50, 'Default true 50/50 split.'
+select organization_id, id, 'true_50_50'::public.partner_split_type, 'Production Company', 'Venue Partner', 50, 50, 'Default true 50/50 split.'
 from event;
 
 grant usage on schema public to anon, authenticated;
@@ -509,30 +526,30 @@ create policy "members can read private event files"
 on storage.objects for select to authenticated
 using (
   bucket_id = 'event-documents'
-  and split_part(name, '/', 1)::uuid = public.current_organization_id()
+  and split_part(name, '/', 1)::uuid = app_private.current_organization_id()
 );
 
 create policy "members can upload private event files"
 on storage.objects for insert to authenticated
 with check (
   bucket_id = 'event-documents'
-  and split_part(name, '/', 1)::uuid = public.current_organization_id()
+  and split_part(name, '/', 1)::uuid = app_private.current_organization_id()
 );
 
 create policy "members can update private event files"
 on storage.objects for update to authenticated
 using (
   bucket_id = 'event-documents'
-  and split_part(name, '/', 1)::uuid = public.current_organization_id()
+  and split_part(name, '/', 1)::uuid = app_private.current_organization_id()
 )
 with check (
   bucket_id = 'event-documents'
-  and split_part(name, '/', 1)::uuid = public.current_organization_id()
+  and split_part(name, '/', 1)::uuid = app_private.current_organization_id()
 );
 
 create policy "members can delete private event files"
 on storage.objects for delete to authenticated
 using (
   bucket_id = 'event-documents'
-  and split_part(name, '/', 1)::uuid = public.current_organization_id()
+  and split_part(name, '/', 1)::uuid = app_private.current_organization_id()
 );

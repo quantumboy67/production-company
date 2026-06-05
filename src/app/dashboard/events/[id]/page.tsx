@@ -81,7 +81,7 @@ export default async function EventDetailPage({
           </Card>
         </div>
       ) : activeTab === "budget" || activeTab === "revenue" ? (
-        <EventFinancialTabs activeTab={activeTab} {...financials} />
+        <EventFinancialTabs activeTab={activeTab} eventId={event.id} {...financials} />
       ) : (
         <Card>
           <CardHeader>

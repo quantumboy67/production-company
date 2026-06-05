@@ -32,7 +32,12 @@ export async function getProfile() {
 
 export async function getOptionalProfile() {
   const supabase = await createClient();
-  const user = await requireUser();
+  const user = await getUser();
+
+  if (!user) {
+    return null;
+  }
+
   const { data, error } = await supabase
     .from("profiles")
     .select("id, organization_id, full_name, role")

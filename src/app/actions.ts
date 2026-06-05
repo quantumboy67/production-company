@@ -21,6 +21,77 @@ const onboardingSchema = z.object({
   organization_name: z.string().trim().min(2, "Organization name is required"),
 });
 
+const optionalMoney = z.preprocess(
+  (value) => (value === "" || value === null || value === undefined ? null : value),
+  z.coerce.number().min(0).nullable(),
+);
+
+const optionalDate = z.preprocess(
+  (value) => (value === "" || value === null || value === undefined ? null : value),
+  z.string().nullable(),
+);
+
+const nullableUuid = z.preprocess(
+  (value) => (value === "" || value === null || value === undefined ? null : value),
+  z.string().uuid().nullable(),
+);
+
+const budgetItemSchema = z.object({
+  id: z.string().uuid().optional(),
+  event_id: z.string().uuid(),
+  cost_type: z.enum(["hard", "soft"]),
+  category: z.string().trim().min(1, "Category is required"),
+  description: z.string().trim().min(1, "Description is required"),
+  estimated_amount: z.coerce.number().min(0),
+  actual_amount: optionalMoney,
+  status: z.enum(["planned", "quoted", "approved", "due", "paid", "cancelled"]),
+  vendor_contact_id: nullableUuid,
+  due_date: optionalDate,
+  paid_date: optionalDate,
+  notes: z.string().trim().optional(),
+});
+
+const batchBudgetItemSchema = budgetItemSchema.required({ id: true }).omit({ event_id: true });
+
+const batchBudgetItemsSchema = z.object({
+  event_id: z.string().uuid(),
+  rows: z
+    .array(batchBudgetItemSchema)
+    .min(1, "No changed budget rows were submitted"),
+});
+
+const revenueItemSchema = z.object({
+  id: z.string().uuid().optional(),
+  event_id: z.string().uuid(),
+  source: z.enum(["ticket", "sponsorship", "bar_bounty", "merch_split", "other"]),
+  description: z.string().trim().min(1, "Description is required"),
+  projected_amount: z.coerce.number().min(0),
+  actual_amount: optionalMoney,
+  status: z.enum(["projected", "confirmed", "received"]),
+  notes: z.string().trim().optional(),
+});
+
+const ticketTierSchema = z.object({
+  id: z.string().uuid().optional(),
+  event_id: z.string().uuid(),
+  name: z.string().trim().min(1, "Tier name is required"),
+  price: z.coerce.number().min(0),
+  capacity: z.coerce.number().int().min(0),
+  sold_quantity: z.coerce.number().int().min(0),
+  comp_quantity: z.coerce.number().int().min(0),
+  notes: z.string().trim().optional(),
+});
+
+const settlementSchema = z.object({
+  event_id: z.string().uuid(),
+  partner_split_type: z.enum(["true_50_50", "sweat_equity", "siloed_revenue_streams", "custom"]),
+  partner_a_name: z.string().trim().optional(),
+  partner_b_name: z.string().trim().optional(),
+  partner_a_percent: z.coerce.number().min(0).max(100),
+  partner_b_percent: z.coerce.number().min(0).max(100),
+  notes: z.string().trim().optional(),
+});
+
 export async function signIn(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
@@ -119,6 +190,288 @@ export async function createEvent(formData: FormData) {
   redirect(`/dashboard/events/${data.id}`);
 }
 
+export async function createBudgetItem(formData: FormData) {
+  const profile = await getProfile();
+  const parsed = budgetItemSchema.omit({ id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "budget", parsed.error.issues[0]?.message);
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  await requireContactAccess(supabase, profile.organization_id, parsed.data.vendor_contact_id);
+
+  const { error } = await supabase.from("budget_items").insert({
+    organization_id: profile.organization_id,
+    ...parsed.data,
+    notes: parsed.data.notes || null,
+  });
+
+  if (error) redirectToFinancialError(parsed.data.event_id, "budget", error.message);
+  revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
+  redirect(`/dashboard/events/${parsed.data.event_id}?tab=budget`);
+}
+
+export async function updateBudgetItem(formData: FormData) {
+  const profile = await getProfile();
+  const parsed = budgetItemSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success || !parsed.data.id) redirectToFinancialError(String(formData.get("event_id") ?? ""), "budget", parsed.error?.issues[0]?.message);
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  await requireContactAccess(supabase, profile.organization_id, parsed.data.vendor_contact_id);
+  const { id, ...values } = parsed.data;
+  const { error } = await supabase
+    .from("budget_items")
+    .update({
+      ...values,
+      notes: values.notes || null,
+    })
+    .eq("id", id)
+    .eq("event_id", values.event_id)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) redirectToFinancialError(values.event_id, "budget", error.message);
+  revalidatePath(`/dashboard/events/${values.event_id}`);
+  redirect(`/dashboard/events/${values.event_id}?tab=budget`);
+}
+
+export async function updateBudgetItemsBatch(formData: FormData) {
+  const profile = await getProfile();
+  const eventId = String(formData.get("event_id") ?? "");
+  const rawRows = String(formData.get("rows") ?? "[]");
+  let rows: unknown;
+
+  try {
+    rows = JSON.parse(rawRows);
+  } catch {
+    return { ok: false, message: "Budget changes could not be read. Please refresh and try again." };
+  }
+
+  const parsed = batchBudgetItemsSchema.safeParse({ event_id: eventId, rows });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? "One or more budget rows are invalid.",
+    };
+  }
+
+  const supabase = await createClient();
+
+  try {
+    await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+    await requireBudgetItemsAccess(
+      supabase,
+      profile.organization_id,
+      parsed.data.event_id,
+      parsed.data.rows.map((row) => row.id),
+    );
+
+    for (const contactId of uniqueContactIds(parsed.data.rows)) {
+      await requireContactAccess(supabase, profile.organization_id, contactId);
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Budget access check failed.",
+    };
+  }
+
+  const updates = parsed.data.rows.map(({ id, ...values }) => ({
+    id,
+    event_id: parsed.data.event_id,
+    organization_id: profile.organization_id,
+    ...values,
+    notes: values.notes || null,
+  }));
+
+  const { error } = await supabase
+    .from("budget_items")
+    .upsert(updates, { onConflict: "id" })
+    .select("id");
+
+  if (error) {
+    return { ok: false, message: error.message };
+  }
+
+  revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
+  return { ok: true, message: `Saved ${updates.length} budget ${updates.length === 1 ? "row" : "rows"}.` };
+}
+
+export async function deleteBudgetItem(formData: FormData) {
+  const profile = await getProfile();
+  const id = String(formData.get("id") ?? "");
+  const eventId = String(formData.get("event_id") ?? "");
+  const supabase = await createClient();
+
+  await requireEventAccess(supabase, profile.organization_id, eventId);
+  const { error } = await supabase
+    .from("budget_items")
+    .delete()
+    .eq("id", id)
+    .eq("event_id", eventId)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) redirectToFinancialError(eventId, "budget", error.message);
+  revalidatePath(`/dashboard/events/${eventId}`);
+  redirect(`/dashboard/events/${eventId}?tab=budget`);
+}
+
+export async function createRevenueItem(formData: FormData) {
+  const profile = await getProfile();
+  const parsed = revenueItemSchema.omit({ id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error.issues[0]?.message);
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  const { error } = await supabase.from("revenue_items").insert({
+    organization_id: profile.organization_id,
+    ...parsed.data,
+    notes: parsed.data.notes || null,
+  });
+
+  if (error) redirectToFinancialError(parsed.data.event_id, "revenue", error.message);
+  revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
+  redirect(`/dashboard/events/${parsed.data.event_id}?tab=revenue`);
+}
+
+export async function updateRevenueItem(formData: FormData) {
+  const profile = await getProfile();
+  const parsed = revenueItemSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success || !parsed.data.id) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error?.issues[0]?.message);
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  const { id, ...values } = parsed.data;
+  const { error } = await supabase
+    .from("revenue_items")
+    .update({
+      ...values,
+      notes: values.notes || null,
+    })
+    .eq("id", id)
+    .eq("event_id", values.event_id)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) redirectToFinancialError(values.event_id, "revenue", error.message);
+  revalidatePath(`/dashboard/events/${values.event_id}`);
+  redirect(`/dashboard/events/${values.event_id}?tab=revenue`);
+}
+
+export async function deleteRevenueItem(formData: FormData) {
+  const profile = await getProfile();
+  const id = String(formData.get("id") ?? "");
+  const eventId = String(formData.get("event_id") ?? "");
+  const supabase = await createClient();
+
+  await requireEventAccess(supabase, profile.organization_id, eventId);
+  const { error } = await supabase
+    .from("revenue_items")
+    .delete()
+    .eq("id", id)
+    .eq("event_id", eventId)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) redirectToFinancialError(eventId, "revenue", error.message);
+  revalidatePath(`/dashboard/events/${eventId}`);
+  redirect(`/dashboard/events/${eventId}?tab=revenue`);
+}
+
+export async function createTicketTier(formData: FormData) {
+  const profile = await getProfile();
+  const parsed = ticketTierSchema.omit({ id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error.issues[0]?.message);
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  const { error } = await supabase.from("ticket_tiers").insert({
+    organization_id: profile.organization_id,
+    ...parsed.data,
+    notes: parsed.data.notes || null,
+  });
+
+  if (error) redirectToFinancialError(parsed.data.event_id, "revenue", error.message);
+  revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
+  redirect(`/dashboard/events/${parsed.data.event_id}?tab=revenue`);
+}
+
+export async function updateTicketTier(formData: FormData) {
+  const profile = await getProfile();
+  const parsed = ticketTierSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success || !parsed.data.id) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error?.issues[0]?.message);
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  const { id, ...values } = parsed.data;
+  const { error } = await supabase
+    .from("ticket_tiers")
+    .update({
+      ...values,
+      notes: values.notes || null,
+    })
+    .eq("id", id)
+    .eq("event_id", values.event_id)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) redirectToFinancialError(values.event_id, "revenue", error.message);
+  revalidatePath(`/dashboard/events/${values.event_id}`);
+  redirect(`/dashboard/events/${values.event_id}?tab=revenue`);
+}
+
+export async function deleteTicketTier(formData: FormData) {
+  const profile = await getProfile();
+  const id = String(formData.get("id") ?? "");
+  const eventId = String(formData.get("event_id") ?? "");
+  const supabase = await createClient();
+
+  await requireEventAccess(supabase, profile.organization_id, eventId);
+  const { error } = await supabase
+    .from("ticket_tiers")
+    .delete()
+    .eq("id", id)
+    .eq("event_id", eventId)
+    .eq("organization_id", profile.organization_id);
+
+  if (error) redirectToFinancialError(eventId, "revenue", error.message);
+  revalidatePath(`/dashboard/events/${eventId}`);
+  redirect(`/dashboard/events/${eventId}?tab=revenue`);
+}
+
+export async function updateSettlement(formData: FormData) {
+  const profile = await getProfile();
+  const parsed = settlementSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error.issues[0]?.message);
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  const { error } = await supabase
+    .from("settlements")
+    .upsert(
+      {
+        organization_id: profile.organization_id,
+        ...parsed.data,
+        partner_a_name: parsed.data.partner_a_name || null,
+        partner_b_name: parsed.data.partner_b_name || null,
+        notes: parsed.data.notes || null,
+      },
+      { onConflict: "event_id" },
+    );
+
+  if (error) redirectToFinancialError(parsed.data.event_id, "revenue", error.message);
+  revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
+  redirect(`/dashboard/events/${parsed.data.event_id}?tab=revenue`);
+}
+
+function redirectToFinancialError(eventId: string, tab: "budget" | "revenue", message = "Invalid financial item"): never {
+  redirect(`/dashboard/events/${eventId}?tab=${tab}&error=${encodeURIComponent(message)}`);
+}
+
 export async function createDemoEvent() {
   const profile = await getProfile();
   const demoError = await createDemoEventForOrganization(profile.organization_id);
@@ -178,6 +531,69 @@ export async function deleteEvent(formData: FormData) {
 
   revalidatePath("/dashboard/events");
   redirect("/dashboard/events");
+}
+
+async function requireEventAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  organizationId: string,
+  eventId: string,
+) {
+  const { data, error } = await supabase
+    .from("events")
+    .select("id")
+    .eq("id", eventId)
+    .eq("organization_id", organizationId)
+    .single();
+
+  if (error || !data) {
+    throw new Error("Event not found for this organization");
+  }
+}
+
+async function requireContactAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  organizationId: string,
+  contactId: string | null,
+) {
+  if (!contactId) return;
+
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("id")
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .single();
+
+  if (error || !data) {
+    throw new Error("Contact not found for this organization");
+  }
+}
+
+async function requireBudgetItemsAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  organizationId: string,
+  eventId: string,
+  itemIds: string[],
+) {
+  const uniqueIds = [...new Set(itemIds)];
+  const { data, error } = await supabase
+    .from("budget_items")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("organization_id", organizationId)
+    .in("id", uniqueIds);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if ((data ?? []).length !== uniqueIds.length) {
+    throw new Error("One or more budget items were not found for this event.");
+  }
+}
+
+function uniqueContactIds(rows: z.infer<typeof batchBudgetItemsSchema>["rows"]) {
+  return [...new Set(rows.map((row) => row.vendor_contact_id).filter((id): id is string => Boolean(id)))];
 }
 
 function slugify(value: string) {
