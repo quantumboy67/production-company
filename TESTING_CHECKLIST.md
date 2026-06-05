@@ -17,6 +17,7 @@
 - [ ] Confirm dashboard loads after sign-in.
 - [ ] Confirm upcoming event count appears.
 - [ ] Confirm the seeded `Cedric Burnside @ Fairweather` event appears after profile setup.
+- [ ] Confirm the beta focus note appears and points users toward budgets, revenue, ticket tiers, and settlement tracking.
 - [ ] If an organization is empty, click `Create demo event` and confirm demo data appears.
 
 ## Event CRUD
@@ -37,7 +38,7 @@
 
 ## Revenue And Ticket Tiers
 
-- [ ] Select `Revenue / Settlement`.
+- [ ] Select `Revenue & Settlement`.
 - [ ] Confirm ticket tiers include `GA` and `VIP 4-top tables`.
 - [ ] Confirm projected gross uses ticket price times tier capacity.
 - [ ] Add, edit, and delete revenue rows.
@@ -69,8 +70,8 @@
 ## Beta Readiness Smoke
 
 - [ ] Confirm live beta URL access does not unexpectedly require Vercel login, or document the Vercel share/protection flow for testers.
-- [ ] Confirm primary navigation shows only beta-ready modules.
-- [ ] Confirm scaffold-only modules are hidden, disabled, or clearly marked as coming later.
+- [ ] Confirm primary navigation shows only Dashboard and Events.
+- [ ] Confirm event detail tabs show only Overview, Budget, and Revenue & Settlement.
 - [ ] Confirm approved Juniper Berry logo and favicon are visible after deployment.
-- [ ] Confirm existing demo/QA settlement partner names use Juniper Berry Production Company.
+- [ ] Confirm existing demo/QA settlement partner names display as Juniper Berry Production Company.
 - [ ] Confirm dashboard financial labels match event settlement terminology.

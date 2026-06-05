@@ -27,6 +27,7 @@
 - [ ] Confirm build command is `npm run build`.
 - [ ] Confirm install command is `npm install`.
 - [ ] Deploy preview.
+- [ ] If beta testers should access the deployment directly, disable Vercel Deployment Protection for the beta environment or distribute an approved Vercel share/bypass link.
 - [ ] Smoke test preview URL.
 - [ ] Promote to production when preview is clean.
 

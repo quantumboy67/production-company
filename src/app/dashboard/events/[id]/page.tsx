@@ -12,12 +12,7 @@ import { prettyDate, titleize } from "@/lib/format";
 const tabs = [
   ["overview", "Overview"],
   ["budget", "Budget"],
-  ["revenue", "Revenue / Settlement"],
-  ["run-of-show", "Run of Show"],
-  ["tasks", "Tasks"],
-  ["contacts", "Contacts"],
-  ["contracts-files", "Contracts / Files"],
-  ["sponsorships", "Sponsorships"],
+  ["revenue", "Revenue & Settlement"],
 ] as const;
 
 export default async function EventDetailPage({
@@ -80,17 +75,8 @@ export default async function EventDetailPage({
             </CardContent>
           </Card>
         </div>
-      ) : activeTab === "budget" || activeTab === "revenue" ? (
-        <EventFinancialTabs activeTab={activeTab} eventId={event.id} {...financials} />
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>{tabs.find(([value]) => value === activeTab)?.[1]}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">This section is scaffolded for the next MVP phase.</p>
-          </CardContent>
-        </Card>
+        <EventFinancialTabs activeTab={activeTab} eventId={event.id} {...financials} />
       )}
     </div>
   );

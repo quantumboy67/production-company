@@ -1,15 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ContactRound, LayoutDashboard, MapPin, Music2, Settings } from "lucide-react";
+import { LayoutDashboard, Music2 } from "lucide-react";
 import { signOut } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/events", label: "Events", icon: Music2 },
-  { href: "/dashboard/contacts", label: "Contacts", icon: ContactRound },
-  { href: "/dashboard/venues", label: "Venues", icon: MapPin },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppNav() {
@@ -35,6 +32,9 @@ export function AppNav() {
           </Button>
         ))}
       </nav>
+      <div className="mt-4 rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+        Beta focus: event budgets, revenue, ticket tiers, and settlement tracking.
+      </div>
       <form action={signOut} className="mt-auto">
         <Button type="submit" variant="outline" className="w-full justify-start">
           Sign out

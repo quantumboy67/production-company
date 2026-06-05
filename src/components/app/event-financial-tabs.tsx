@@ -155,6 +155,7 @@ export function EventFinancialTabs(props: Props) {
       {activeTab === "budget" ? (
         <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
           <div className="space-y-4">
+            <BetaFocusNote text="Budget tracks estimated costs, actual/paid amounts, vendor status, and settlement-ready totals." />
             <BudgetItemForm eventId={props.eventId} contacts={props.contacts} />
             <BudgetBatchToolbar
               dirtyCount={dirtyCount}
@@ -187,6 +188,7 @@ export function EventFinancialTabs(props: Props) {
       ) : (
         <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
           <div className="space-y-4">
+            <BetaFocusNote text="Revenue & Settlement tracks ticket tiers, non-ticket income, projected gross, actual gross, and partner splits." />
             <TicketTierForm eventId={props.eventId} />
             <TicketTierList eventId={props.eventId} ticketTiers={props.ticketTiers} />
             <RevenueItemForm eventId={props.eventId} />
@@ -197,6 +199,14 @@ export function EventFinancialTabs(props: Props) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function BetaFocusNote({ text }: { text: string }) {
+  return (
+    <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
+      <span className="font-medium text-foreground">Beta focus:</span> {text}
     </div>
   );
 }
@@ -212,17 +222,20 @@ function CostSummary({ items }: { items: BudgetItem[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Cost Totals</CardTitle>
+        <CardTitle>Budget totals</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <SummaryRow label="Hard estimate" value={money(hardEstimate)} />
-        <SummaryRow label="Hard actual" value={money(hardActual)} />
-        <SummaryRow label="Soft estimate" value={money(softEstimate)} />
-        <SummaryRow label="Soft actual" value={money(softActual)} />
+        <SummaryRow label="Hard estimated" value={money(hardEstimate)} />
+        <SummaryRow label="Hard actual / paid" value={money(hardActual)} />
+        <SummaryRow label="Soft estimated" value={money(softEstimate)} />
+        <SummaryRow label="Soft actual / paid" value={money(softActual)} />
         <div className="my-3 border-t" />
-        <SummaryRow label="Total estimate" value={money(totalEstimate)} strong />
-        <SummaryRow label="Total actual" value={money(totalActual)} strong />
-        <SummaryRow label="Variance" value={money(totalActual - totalEstimate)} strong />
+        <SummaryRow label="Total estimated" value={money(totalEstimate)} strong />
+        <SummaryRow label="Total actual / paid" value={money(totalActual)} strong />
+        <SummaryRow label="Variance to estimate" value={money(totalActual - totalEstimate)} strong />
+        <p className="border-t pt-3 text-xs text-muted-foreground">
+          Blank actuals count as $0 until an actual or paid amount is entered.
+        </p>
       </CardContent>
     </Card>
   );
@@ -232,7 +245,7 @@ function BudgetItemForm({ eventId, contacts }: { eventId: string; contacts: Cont
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Add Budget Item</CardTitle>
+        <CardTitle>Add budget item</CardTitle>
       </CardHeader>
       <CardContent>
         <form action={createBudgetItem} className="grid gap-3 md:grid-cols-6">
@@ -249,11 +262,11 @@ function BudgetItemForm({ eventId, contacts }: { eventId: string; contacts: Cont
           <Field label="Description" className="md:col-span-2">
             <Input name="description" required />
           </Field>
-          <Field label="Estimate">
+          <Field label="Estimated">
             <Input name="estimated_amount" type="number" min="0" step="0.01" defaultValue="0" required />
           </Field>
-          <Field label="Actual">
-            <Input name="actual_amount" type="number" min="0" step="0.01" />
+          <Field label="Actual / paid">
+            <Input name="actual_amount" type="number" min="0" step="0.01" placeholder="Blank until known" />
           </Field>
           <Field label="Status">
             <Select name="status" defaultValue="planned">
@@ -301,7 +314,10 @@ function BudgetList({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <div>
+          <CardTitle>{title}</CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">{items.length} {items.length === 1 ? "line item" : "line items"}</p>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {items.length === 0 ? (
@@ -337,7 +353,7 @@ function BudgetList({
                     required
                   />
                 </Field>
-                <Field label="Estimate">
+                <Field label="Estimated">
                   <Input
                     name="estimated_amount"
                     type="number"
@@ -348,7 +364,7 @@ function BudgetList({
                     required
                   />
                 </Field>
-                <Field label="Actual">
+                <Field label="Actual / paid">
                   <Input
                     name="actual_amount"
                     type="number"
@@ -356,6 +372,7 @@ function BudgetList({
                     step="0.01"
                     value={item.actual_amount}
                     onChange={(event) => onChange(item.id, { actual_amount: event.target.value })}
+                    placeholder="Blank until known"
                   />
                 </Field>
                 <Field label="Status">
@@ -463,7 +480,7 @@ function TicketTierForm({ eventId }: { eventId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Add Ticket Tier</CardTitle>
+        <CardTitle>Add ticket tier</CardTitle>
       </CardHeader>
       <CardContent>
         <form action={createTicketTier} className="grid gap-3 md:grid-cols-6">
@@ -485,7 +502,10 @@ function TicketTierList({ eventId, ticketTiers }: { eventId: string; ticketTiers
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ticket Tiers</CardTitle>
+        <div>
+          <CardTitle>Ticket tiers</CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">Projected gross uses price x capacity. Actual gross uses price x sold quantity; comps do not add gross.</p>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {ticketTiers.length === 0 ? (
@@ -525,7 +545,7 @@ function RevenueItemForm({ eventId }: { eventId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Add Revenue Item</CardTitle>
+        <CardTitle>Add revenue item</CardTitle>
       </CardHeader>
       <CardContent>
         <form action={createRevenueItem} className="grid gap-3 md:grid-cols-6">
@@ -536,8 +556,8 @@ function RevenueItemForm({ eventId }: { eventId: string }) {
             </Select>
           </Field>
           <Field label="Description" className="md:col-span-2"><Input name="description" required /></Field>
-          <Field label="Estimate"><Input name="projected_amount" type="number" min="0" step="0.01" defaultValue="0" required /></Field>
-          <Field label="Actual"><Input name="actual_amount" type="number" min="0" step="0.01" /></Field>
+          <Field label="Projected"><Input name="projected_amount" type="number" min="0" step="0.01" defaultValue="0" required /></Field>
+          <Field label="Actual / received"><Input name="actual_amount" type="number" min="0" step="0.01" placeholder="Blank until known" /></Field>
           <Field label="Status">
             <Select name="status" defaultValue="projected">
               {revenueStatuses.map((status) => <option key={status} value={status}>{titleize(status)}</option>)}
@@ -555,7 +575,7 @@ function RevenueList({ eventId, revenueItems }: { eventId: string; revenueItems:
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Revenue Items</CardTitle>
+        <CardTitle>Revenue items</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {revenueItems.length === 0 ? (
@@ -572,8 +592,8 @@ function RevenueList({ eventId, revenueItems }: { eventId: string; revenueItems:
                   </Select>
                 </Field>
                 <Field label="Description" className="md:col-span-2"><Input name="description" defaultValue={item.description} required /></Field>
-                <Field label="Estimate"><Input name="projected_amount" type="number" min="0" step="0.01" defaultValue={item.projected_amount} required /></Field>
-                <Field label="Actual"><Input name="actual_amount" type="number" min="0" step="0.01" defaultValue={item.actual_amount ?? ""} /></Field>
+                <Field label="Projected"><Input name="projected_amount" type="number" min="0" step="0.01" defaultValue={item.projected_amount} required /></Field>
+                <Field label="Actual / received"><Input name="actual_amount" type="number" min="0" step="0.01" defaultValue={item.actual_amount ?? ""} placeholder="Blank until known" /></Field>
                 <Field label="Status">
                   <Select name="status" defaultValue={item.status}>
                     {revenueStatuses.map((status) => <option key={status} value={status}>{titleize(status)}</option>)}
@@ -617,9 +637,12 @@ function SettlementCard({
           <SummaryRow label="Total expenses" value={money(totals.totalExpenses)} />
           <SummaryRow label="Net profit/loss" value={money(totals.netProfit)} strong />
           <SummaryRow label="Break-even" value={money(totals.breakEven)} />
-          <SummaryRow label={settlement?.partner_a_name ?? "Partner A"} value={money(totals.partnerAAmount)} />
-          <SummaryRow label={settlement?.partner_b_name ?? "Partner B"} value={money(totals.partnerBAmount)} />
+          <SummaryRow label={cleanPartnerName(settlement?.partner_a_name) ?? "Partner A"} value={money(totals.partnerAAmount)} />
+          <SummaryRow label={cleanPartnerName(settlement?.partner_b_name) ?? "Partner B"} value={money(totals.partnerBAmount)} />
         </div>
+        <p className="text-xs text-muted-foreground">
+          Partner split amounts are calculated from net profit/loss after total expenses.
+        </p>
         <form action={updateSettlement} className="space-y-3 border-t pt-4">
           <input type="hidden" name="event_id" value={eventId} />
           <Field label="Partner split model">
@@ -628,7 +651,7 @@ function SettlementCard({
             </Select>
           </Field>
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Partner A"><Input name="partner_a_name" defaultValue={settlement?.partner_a_name ?? ""} /></Field>
+            <Field label="Partner A"><Input name="partner_a_name" defaultValue={cleanPartnerName(settlement?.partner_a_name) ?? ""} /></Field>
             <Field label="Partner B"><Input name="partner_b_name" defaultValue={settlement?.partner_b_name ?? ""} /></Field>
             <Field label="Partner A %"><Input name="partner_a_percent" type="number" min="0" max="100" step="0.01" defaultValue={settlement?.partner_a_percent ?? 50} /></Field>
             <Field label="Partner B %"><Input name="partner_b_percent" type="number" min="0" max="100" step="0.01" defaultValue={settlement?.partner_b_percent ?? 50} /></Field>
@@ -784,6 +807,11 @@ function SummaryRow({ label, value, strong }: { label: string; value: string; st
       <span className={strong ? "font-mono text-base font-semibold text-foreground" : "font-mono text-foreground"}>{value}</span>
     </div>
   );
+}
+
+function cleanPartnerName(value: string | null | undefined) {
+  if (!value) return null;
+  return value === "Production Company" ? "Juniper Berry Production Company" : value;
 }
 
 function sumBudget(items: BudgetItem[], costType: "hard" | "soft", key: "estimated_amount" | "actual_amount") {

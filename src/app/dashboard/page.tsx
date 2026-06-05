@@ -20,15 +20,20 @@ export default async function DashboardPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Production overview for upcoming shows.</p>
+          <p className="text-sm text-muted-foreground">Event financials for upcoming shows.</p>
         </div>
         <Button asChild><Link href="/dashboard/events/new">New event</Link></Button>
       </div>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p> : null}
+      <Card className="border-primary/30 bg-primary/5">
+        <CardContent className="py-3 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">Beta focus:</span> event budgets, revenue, ticket tiers, and settlement tracking.
+        </CardContent>
+      </Card>
       <div className="grid gap-4 md:grid-cols-3">
         <Metric label="Upcoming events" value={String(events.length)} />
         <Metric label="Next event" value={nextEvent ? prettyDate(nextEvent.starts_on) : "None"} />
-        <Metric label="Open settlement target" value={money(0)} />
+        <Metric label="Projected net" value={money(0)} />
       </div>
       <Card>
         <CardHeader>

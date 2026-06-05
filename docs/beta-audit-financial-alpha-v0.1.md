@@ -385,3 +385,36 @@ Scope:
 Return files changed, lint/build result, QA result, and whether beta users can be invited.
 ```
 
+## 12. Cleanup Sprint Follow-Up
+
+Completed in the focused beta cleanup sprint:
+
+- Primary sidebar navigation was reduced to Dashboard and Events so beta users are not sent into scaffold-only modules.
+- Event detail tabs were reduced to Overview, Budget, and Revenue & Settlement.
+- Dashboard copy was softened from a broad production overview to event financials for upcoming shows.
+- Dashboard "Open settlement target" was renamed to "Projected net".
+- A short beta focus note was added to the dashboard and sidebar.
+- Budget screen labels were clarified:
+  - Estimate -> Estimated
+  - Actual -> Actual / paid
+  - Cost Totals -> Budget totals
+  - Variance -> Variance to estimate
+- Budget totals now explain that blank actuals count as $0 until entered.
+- Budget Save All behavior remains intact.
+- Revenue screen labels were clarified:
+  - Estimate -> Projected
+  - Actual -> Actual / received
+  - Revenue / Settlement -> Revenue & Settlement
+- Ticket tier helper copy now explains projected gross, actual gross, and comps.
+- Settlement helper copy now explains that partner split amounts are calculated from net profit/loss after expenses.
+- Existing stale settlement partner display of "Production Company" is normalized in the UI to "Juniper Berry Production Company"; the underlying existing database row still needs cleanup if exact stored data matters.
+- Deployment and testing checklists now document the Vercel Deployment Protection / share-link beta access issue.
+
+Intentionally deferred:
+
+- Invite-only users and roles
+- Audit trail
+- CRM/contacts, venues, contracts/files, sponsorships, calendar, online import
+- Broad read-first row redesign
+- Deeper accounting state model such as committed, invoiced, accrued, reconciled
+- RLS or migration changes
