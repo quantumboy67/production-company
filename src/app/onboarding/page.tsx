@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getOptionalProfile, requireUser } from "@/lib/supabase/auth";
+import { getMembership, getOptionalProfile, requireUser } from "@/lib/supabase/auth";
 
 export default async function OnboardingPage({
   searchParams,
@@ -14,9 +14,14 @@ export default async function OnboardingPage({
 }) {
   const user = await requireUser();
   const profile = await getOptionalProfile();
+  const membership = await getMembership();
   const { error } = await searchParams;
 
-  if (profile?.organization_id) {
+  if (membership?.status && membership.status !== "active") {
+    redirect("/login?error=Your account is not active for this organization.");
+  }
+
+  if (profile?.organization_id && membership?.status === "active") {
     redirect("/dashboard");
   }
 

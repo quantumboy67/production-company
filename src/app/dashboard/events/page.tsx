@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { listEvents } from "@/lib/data/events";
 import { prettyDate } from "@/lib/format";
+import { canManageEvents, getProfile } from "@/lib/supabase/auth";
 
 export default async function EventsPage() {
-  const events = await listEvents();
+  const [events, profile] = await Promise.all([listEvents(), getProfile()]);
+  const canCreateEvents = canManageEvents(profile.membership.role);
 
   return (
     <div className="space-y-6">
@@ -16,7 +18,7 @@ export default async function EventsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Events</h1>
           <p className="text-sm text-muted-foreground">Browse and manage productions.</p>
         </div>
-        <Button asChild><Link href="/dashboard/events/new">New event</Link></Button>
+        {canCreateEvents ? <Button asChild><Link href="/dashboard/events/new">New event</Link></Button> : null}
       </div>
       <Card>
         <CardHeader>

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getEvent, getEventFinancials } from "@/lib/data/events";
 import { prettyDate, titleize } from "@/lib/format";
+import { canDeleteRecords, canEditFinancials, canManageEvents, getProfile } from "@/lib/supabase/auth";
 
 const tabs = [
   ["overview", "Overview"],
@@ -25,14 +26,19 @@ export default async function EventDetailPage({
   const { id } = await params;
   const { tab = "overview", error } = await searchParams;
 
-  const [eventResult, financialsResult] = await Promise.allSettled([getEvent(id), getEventFinancials(id)]);
+  const [eventResult, financialsResult, profileResult] = await Promise.allSettled([getEvent(id), getEventFinancials(id), getProfile()]);
 
-  if (eventResult.status === "rejected" || financialsResult.status === "rejected") {
+  if (eventResult.status === "rejected" || financialsResult.status === "rejected" || profileResult.status === "rejected") {
     notFound();
   }
 
   const event = eventResult.value;
   const financials = financialsResult.value;
+  const role = profileResult.value.membership.role;
+  const canEditEvent = canManageEvents(role);
+  const canDeleteEvent = canDeleteRecords(role);
+  const canEditEventFinancials = canEditFinancials(role);
+  const canDeleteEventFinancials = canDeleteRecords(role);
   const activeTab = tabs.some(([value]) => value === tab) ? tab : "overview";
 
   return (
@@ -47,10 +53,12 @@ export default async function EventDetailPage({
             {prettyDate(event.starts_on)}{event.ends_on ? ` - ${prettyDate(event.ends_on)}` : ""} at {event.venues?.name ?? "TBD venue"}
           </p>
         </div>
-        <form action={deleteEvent}>
-          <input type="hidden" name="id" value={event.id} />
-          <Button type="submit" variant="destructive">Delete</Button>
-        </form>
+        {canDeleteEvent ? (
+          <form action={deleteEvent}>
+            <input type="hidden" name="id" value={event.id} />
+            <Button type="submit" variant="destructive">Delete</Button>
+          </form>
+        ) : null}
       </div>
 
       <div className="flex gap-2 overflow-x-auto border-b pb-2">
@@ -65,7 +73,7 @@ export default async function EventDetailPage({
 
       {activeTab === "overview" ? (
         <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-          <EventForm event={event} />
+          <EventForm event={event} readOnly={!canEditEvent} />
           <Card>
             <CardHeader>
               <CardTitle>Production Notes</CardTitle>
@@ -76,7 +84,13 @@ export default async function EventDetailPage({
           </Card>
         </div>
       ) : (
-        <EventFinancialTabs activeTab={activeTab} eventId={event.id} {...financials} />
+        <EventFinancialTabs
+          activeTab={activeTab}
+          eventId={event.id}
+          canEditFinancials={canEditEventFinancials}
+          canDeleteFinancials={canDeleteEventFinancials}
+          {...financials}
+        />
       )}
     </div>
   );

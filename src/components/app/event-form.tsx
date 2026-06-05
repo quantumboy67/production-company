@@ -10,9 +10,10 @@ type Props = {
   event?: EventRecord;
   error?: string;
   defaultStartDate?: string;
+  readOnly?: boolean;
 };
 
-export function EventForm({ event, error, defaultStartDate }: Props) {
+export function EventForm({ event, error, defaultStartDate, readOnly = false }: Props) {
   const action = event ? updateEvent : createEvent;
 
   return (
@@ -26,15 +27,15 @@ export function EventForm({ event, error, defaultStartDate }: Props) {
           {event ? <input type="hidden" name="id" value={event.id} /> : null}
           <div className="md:col-span-2">
             <Label htmlFor="name">Event name</Label>
-            <Input id="name" name="name" defaultValue={event?.name} required />
+            <Input id="name" name="name" defaultValue={event?.name} required disabled={readOnly} />
           </div>
           <div>
             <Label htmlFor="starts_on">Start date</Label>
-            <Input id="starts_on" name="starts_on" type="date" defaultValue={event?.starts_on ?? defaultStartDate} required />
+            <Input id="starts_on" name="starts_on" type="date" defaultValue={event?.starts_on ?? defaultStartDate} required disabled={readOnly} />
           </div>
           <div>
             <Label htmlFor="ends_on">End date</Label>
-            <Input id="ends_on" name="ends_on" type="date" defaultValue={event?.ends_on ?? ""} />
+            <Input id="ends_on" name="ends_on" type="date" defaultValue={event?.ends_on ?? ""} disabled={readOnly} />
           </div>
           <div>
             <Label htmlFor="status">Status</Label>
@@ -43,6 +44,7 @@ export function EventForm({ event, error, defaultStartDate }: Props) {
               name="status"
               defaultValue={event?.status ?? "planning"}
               className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              disabled={readOnly}
             >
               <option value="planning">Planning</option>
               <option value="confirmed">Confirmed</option>
@@ -53,15 +55,21 @@ export function EventForm({ event, error, defaultStartDate }: Props) {
           </div>
           <div>
             <Label htmlFor="capacity">Capacity</Label>
-            <Input id="capacity" name="capacity" type="number" min="0" defaultValue={event?.capacity ?? ""} />
+            <Input id="capacity" name="capacity" type="number" min="0" defaultValue={event?.capacity ?? ""} disabled={readOnly} />
           </div>
           <div className="md:col-span-2">
             <Label htmlFor="notes">Notes</Label>
-            <Textarea id="notes" name="notes" defaultValue={event?.notes ?? ""} />
+            <Textarea id="notes" name="notes" defaultValue={event?.notes ?? ""} disabled={readOnly} />
           </div>
-          <div className="md:col-span-2">
-            <Button type="submit">{event ? "Save event" : "Create event"}</Button>
-          </div>
+          {readOnly ? (
+            <p className="md:col-span-2 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+              Your role has read-only access to event details.
+            </p>
+          ) : (
+            <div className="md:col-span-2">
+              <Button type="submit">{event ? "Save event" : "Create event"}</Button>
+            </div>
+          )}
         </form>
       </CardContent>
     </Card>

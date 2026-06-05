@@ -12,6 +12,27 @@
 - [ ] Confirm revisiting `/onboarding` after setup redirects to `/dashboard`.
 - [ ] Sign out and confirm the browser returns to `/login`.
 
+## Access Control Alpha
+
+- [ ] Apply the Access Control Alpha migration and confirm the existing dummy QA user is an active Owner.
+- [ ] Confirm Owner can access Settings > Team.
+- [ ] Owner invites a Viewer with a temporary password.
+- [ ] Viewer logs in and is redirected to `/change-password`.
+- [ ] Viewer creates a new password and reaches `/dashboard`.
+- [ ] Viewer can view dashboard, events, Budget, and Revenue & Settlement.
+- [ ] Viewer cannot see create/edit/save/delete controls for events or financials.
+- [ ] Viewer cannot access Settings > Team.
+- [ ] Owner promotes Viewer to Producer.
+- [ ] Producer can create/edit events and financial records.
+- [ ] Producer cannot delete events or financial records.
+- [ ] Producer cannot access Settings > Team.
+- [ ] Owner promotes Producer to Admin.
+- [ ] Admin can invite and manage non-Owner users.
+- [ ] Admin cannot remove or demote an Owner.
+- [ ] Owner cannot remove the last active Owner.
+- [ ] Owner removes/deactivates the test user and the removed user loses dashboard/org access.
+- [ ] Confirm `SUPABASE_SERVICE_ROLE_KEY` is server-only and never appears in browser code or console output.
+
 ## Dashboard
 
 - [ ] Confirm dashboard loads after sign-in.

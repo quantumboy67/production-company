@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listDashboardEvents } from "@/lib/data/events";
 import { money, prettyDate, titleize } from "@/lib/format";
+import { canManageEvents, getProfile } from "@/lib/supabase/auth";
 import type { DashboardEvent, EventProfitLoss } from "@/lib/types";
 
 type SearchParams = {
@@ -23,7 +24,8 @@ export default async function DashboardPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { date, error, month, upcoming } = await searchParams;
-  const events = await listDashboardEvents();
+  const [events, profile] = await Promise.all([listDashboardEvents(), getProfile()]);
+  const canCreateEvents = canManageEvents(profile.membership.role);
   const today = toIsoDate(new Date());
   const currentMonth = parseMonth(month) ?? today.slice(0, 7);
   const selectedDate = isIsoDate(date) ? date : getDefaultSelectedDate(currentMonth, today);
@@ -52,7 +54,7 @@ export default async function DashboardPage({
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Calendar-based event financial tracker.</p>
         </div>
-        <Button asChild><Link href="/dashboard/events/new">New event</Link></Button>
+        {canCreateEvents ? <Button asChild><Link href="/dashboard/events/new">New event</Link></Button> : null}
       </div>
 
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p> : null}
@@ -63,7 +65,7 @@ export default async function DashboardPage({
         </CardContent>
       </Card>
 
-      {events.length === 0 ? (
+      {events.length === 0 && canCreateEvents ? (
         <Card className="print:hidden">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
             <p className="text-sm text-muted-foreground">No events yet. Create a demo event to explore the financial workflow.</p>
@@ -143,7 +145,7 @@ export default async function DashboardPage({
           </CardContent>
         </Card>
 
-        <SelectedDatePanel date={selectedDate} events={selectedEvents} />
+        <SelectedDatePanel date={selectedDate} events={selectedEvents} canCreateEvents={canCreateEvents} />
       </section>
 
       <section className="space-y-3">
@@ -203,7 +205,15 @@ function MetricCard({ label, value, detail, muted }: { label: string; value: str
   );
 }
 
-function SelectedDatePanel({ date, events }: { date: string; events: DashboardEvent[] }) {
+function SelectedDatePanel({
+  date,
+  events,
+  canCreateEvents,
+}: {
+  date: string;
+  events: DashboardEvent[];
+  canCreateEvents: boolean;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -225,9 +235,11 @@ function SelectedDatePanel({ date, events }: { date: string; events: DashboardEv
             </Link>
           ))
         )}
-        <Button asChild variant="outline" className="w-full">
-          <Link href={`/dashboard/events/new?date=${date}`}>Add event on this date</Link>
-        </Button>
+        {canCreateEvents ? (
+          <Button asChild variant="outline" className="w-full">
+            <Link href={`/dashboard/events/new?date=${date}`}>Add event on this date</Link>
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   );

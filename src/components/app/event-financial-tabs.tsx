@@ -32,6 +32,8 @@ type Props = {
   ticketTiers: TicketTier[];
   settlement: Settlement | null;
   contacts: ContactOption[];
+  canEditFinancials: boolean;
+  canDeleteFinancials: boolean;
 };
 
 const hardCategories = [
@@ -156,14 +158,18 @@ export function EventFinancialTabs(props: Props) {
         <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
           <div className="space-y-4">
             <BetaFocusNote text="Budget tracks estimated costs, actual/paid amounts, vendor status, and settlement-ready totals." />
-            <BudgetItemForm eventId={props.eventId} contacts={props.contacts} />
-            <BudgetBatchToolbar
+            {props.canEditFinancials ? (
+              <BudgetItemForm eventId={props.eventId} contacts={props.contacts} />
+            ) : (
+              <ReadOnlyNotice label="Your role has read-only access to budget items." />
+            )}
+            {props.canEditFinancials ? <BudgetBatchToolbar
               dirtyCount={dirtyCount}
               isPending={isBatchPending}
               message={batchMessage}
               onDiscard={discardBudgetChanges}
               onSave={saveBudgetChanges}
-            />
+            /> : null}
             <BudgetList
               title="Hard Costs"
               eventId={props.eventId}
@@ -171,6 +177,8 @@ export function EventFinancialTabs(props: Props) {
               contacts={props.contacts}
               dirtyIds={new Set(dirtyDrafts.map((draft) => draft.id))}
               hasUnsavedChanges={dirtyCount > 0}
+              canEdit={props.canEditFinancials}
+              canDelete={props.canDeleteFinancials}
               onChange={updateBudgetDraft}
             />
             <BudgetList
@@ -180,6 +188,8 @@ export function EventFinancialTabs(props: Props) {
               contacts={props.contacts}
               dirtyIds={new Set(dirtyDrafts.map((draft) => draft.id))}
               hasUnsavedChanges={dirtyCount > 0}
+              canEdit={props.canEditFinancials}
+              canDelete={props.canDeleteFinancials}
               onChange={updateBudgetDraft}
             />
           </div>
@@ -189,13 +199,29 @@ export function EventFinancialTabs(props: Props) {
         <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
           <div className="space-y-4">
             <BetaFocusNote text="Revenue & Settlement tracks ticket tiers, non-ticket income, projected gross, actual gross, and partner splits." />
-            <TicketTierForm eventId={props.eventId} />
-            <TicketTierList eventId={props.eventId} ticketTiers={props.ticketTiers} />
-            <RevenueItemForm eventId={props.eventId} />
-            <RevenueList eventId={props.eventId} revenueItems={props.revenueItems} />
+            {props.canEditFinancials ? (
+              <>
+                <TicketTierForm eventId={props.eventId} />
+                <RevenueItemForm eventId={props.eventId} />
+              </>
+            ) : (
+              <ReadOnlyNotice label="Your role has read-only access to revenue, ticket tiers, and settlement." />
+            )}
+            <TicketTierList
+              eventId={props.eventId}
+              ticketTiers={props.ticketTiers}
+              canEdit={props.canEditFinancials}
+              canDelete={props.canDeleteFinancials}
+            />
+            <RevenueList
+              eventId={props.eventId}
+              revenueItems={props.revenueItems}
+              canEdit={props.canEditFinancials}
+              canDelete={props.canDeleteFinancials}
+            />
           </div>
           <div className="space-y-4">
-            <SettlementCard eventId={props.eventId} totals={totals} settlement={props.settlement} />
+            <SettlementCard eventId={props.eventId} totals={totals} settlement={props.settlement} canEdit={props.canEditFinancials} />
           </div>
         </div>
       )}
@@ -207,6 +233,14 @@ function BetaFocusNote({ text }: { text: string }) {
   return (
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
       <span className="font-medium text-foreground">Beta focus:</span> {text}
+    </div>
+  );
+}
+
+function ReadOnlyNotice({ label }: { label: string }) {
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+      {label}
     </div>
   );
 }
@@ -301,6 +335,8 @@ function BudgetList({
   contacts,
   dirtyIds,
   hasUnsavedChanges,
+  canEdit,
+  canDelete,
   onChange,
 }: {
   title: string;
@@ -309,6 +345,8 @@ function BudgetList({
   contacts: ContactOption[];
   dirtyIds: Set<string>;
   hasUnsavedChanges: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   onChange: (id: string, values: Partial<BudgetDraft>) => void;
 }) {
   return (
@@ -332,6 +370,7 @@ function BudgetList({
                   <Select
                     name="cost_type"
                     value={item.cost_type}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { cost_type: event.target.value as BudgetDraft["cost_type"] })}
                   >
                     <option value="hard">Hard</option>
@@ -342,6 +381,7 @@ function BudgetList({
                   <CategorySelect
                     name="category"
                     value={item.category}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { category: event.target.value })}
                   />
                 </Field>
@@ -349,6 +389,7 @@ function BudgetList({
                   <Input
                     name="description"
                     value={item.description}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { description: event.target.value })}
                     required
                   />
@@ -360,6 +401,7 @@ function BudgetList({
                     min="0"
                     step="0.01"
                     value={item.estimated_amount}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { estimated_amount: event.target.value })}
                     required
                   />
@@ -371,6 +413,7 @@ function BudgetList({
                     min="0"
                     step="0.01"
                     value={item.actual_amount}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { actual_amount: event.target.value })}
                     placeholder="Blank until known"
                   />
@@ -379,6 +422,7 @@ function BudgetList({
                   <Select
                     name="status"
                     value={item.status}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { status: event.target.value as BudgetDraft["status"] })}
                   >
                     {costStatuses.map((status) => <option key={status} value={status}>{titleize(status)}</option>)}
@@ -388,6 +432,7 @@ function BudgetList({
                   <ContactSelect
                     contacts={contacts}
                     value={item.vendor_contact_id}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { vendor_contact_id: event.target.value })}
                   />
                 </Field>
@@ -396,6 +441,7 @@ function BudgetList({
                     name="due_date"
                     type="date"
                     value={item.due_date}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { due_date: event.target.value })}
                   />
                 </Field>
@@ -404,6 +450,7 @@ function BudgetList({
                     name="paid_date"
                     type="date"
                     value={item.paid_date}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { paid_date: event.target.value })}
                   />
                 </Field>
@@ -411,18 +458,21 @@ function BudgetList({
                   <Input
                     name="notes"
                     value={item.notes}
+                    disabled={!canEdit}
                     onChange={(event) => onChange(item.id, { notes: event.target.value })}
                   />
                 </Field>
                 <div className="flex items-end gap-2">
-                  <Button type="submit" variant="secondary">{dirtyIds.has(item.id) ? "Save row" : "Save"}</Button>
-                  <DeleteButton
-                    action={deleteBudgetItem}
-                    title="Delete budget item?"
-                    description={`This will remove "${item.description}" from this event budget. This cannot be undone.`}
-                    disabled={hasUnsavedChanges}
-                    disabledMessage="Save or discard budget changes before deleting."
-                  />
+                  {canEdit ? <Button type="submit" variant="secondary">{dirtyIds.has(item.id) ? "Save row" : "Save"}</Button> : null}
+                  {canDelete ? (
+                    <DeleteButton
+                      action={deleteBudgetItem}
+                      title="Delete budget item?"
+                      description={`This will remove "${item.description}" from this event budget. This cannot be undone.`}
+                      disabled={hasUnsavedChanges}
+                      disabledMessage="Save or discard budget changes before deleting."
+                    />
+                  ) : null}
                 </div>
               </form>
             </div>
@@ -498,7 +548,17 @@ function TicketTierForm({ eventId }: { eventId: string }) {
   );
 }
 
-function TicketTierList({ eventId, ticketTiers }: { eventId: string; ticketTiers: TicketTier[] }) {
+function TicketTierList({
+  eventId,
+  ticketTiers,
+  canEdit,
+  canDelete,
+}: {
+  eventId: string;
+  ticketTiers: TicketTier[];
+  canEdit: boolean;
+  canDelete: boolean;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -516,21 +576,23 @@ function TicketTierList({ eventId, ticketTiers }: { eventId: string; ticketTiers
               <form action={updateTicketTier} className="grid gap-3 md:grid-cols-6">
                 <input type="hidden" name="id" value={tier.id} />
                 <input type="hidden" name="event_id" value={eventId} />
-                <Field label="Name" className="md:col-span-2"><Input name="name" defaultValue={tier.name} required /></Field>
-                <Field label="Unit price"><Input name="price" type="number" min="0" step="0.01" defaultValue={tier.price} required /></Field>
-                <Field label="Capacity"><Input name="capacity" type="number" min="0" defaultValue={tier.capacity} required /></Field>
-                <Field label="Sold"><Input name="sold_quantity" type="number" min="0" defaultValue={tier.sold_quantity} required /></Field>
-                <Field label="Comps"><Input name="comp_quantity" type="number" min="0" defaultValue={tier.comp_quantity} required /></Field>
+                <Field label="Name" className="md:col-span-2"><Input name="name" defaultValue={tier.name} required disabled={!canEdit} /></Field>
+                <Field label="Unit price"><Input name="price" type="number" min="0" step="0.01" defaultValue={tier.price} required disabled={!canEdit} /></Field>
+                <Field label="Capacity"><Input name="capacity" type="number" min="0" defaultValue={tier.capacity} required disabled={!canEdit} /></Field>
+                <Field label="Sold"><Input name="sold_quantity" type="number" min="0" defaultValue={tier.sold_quantity} required disabled={!canEdit} /></Field>
+                <Field label="Comps"><Input name="comp_quantity" type="number" min="0" defaultValue={tier.comp_quantity} required disabled={!canEdit} /></Field>
                 <Field label="Projected gross"><ReadOnlyMetric value={money(tier.projected_gross)} /></Field>
                 <Field label="Actual gross"><ReadOnlyMetric value={money(tier.generated_gross)} /></Field>
-                <Field label="Notes" className="md:col-span-3"><Input name="notes" defaultValue={tier.notes ?? ""} /></Field>
+                <Field label="Notes" className="md:col-span-3"><Input name="notes" defaultValue={tier.notes ?? ""} disabled={!canEdit} /></Field>
                 <div className="flex items-end gap-2">
-                  <Button type="submit" variant="secondary">Save</Button>
-                  <DeleteButton
-                    action={deleteTicketTier}
-                    title="Delete ticket tier?"
-                    description={`This will remove "${tier.name}" from this event's ticket tiers. This cannot be undone.`}
-                  />
+                  {canEdit ? <Button type="submit" variant="secondary">Save</Button> : null}
+                  {canDelete ? (
+                    <DeleteButton
+                      action={deleteTicketTier}
+                      title="Delete ticket tier?"
+                      description={`This will remove "${tier.name}" from this event's ticket tiers. This cannot be undone.`}
+                    />
+                  ) : null}
                 </div>
               </form>
             </div>
@@ -571,7 +633,17 @@ function RevenueItemForm({ eventId }: { eventId: string }) {
   );
 }
 
-function RevenueList({ eventId, revenueItems }: { eventId: string; revenueItems: RevenueItem[] }) {
+function RevenueList({
+  eventId,
+  revenueItems,
+  canEdit,
+  canDelete,
+}: {
+  eventId: string;
+  revenueItems: RevenueItem[];
+  canEdit: boolean;
+  canDelete: boolean;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -587,26 +659,28 @@ function RevenueList({ eventId, revenueItems }: { eventId: string; revenueItems:
                 <input type="hidden" name="id" value={item.id} />
                 <input type="hidden" name="event_id" value={eventId} />
                 <Field label="Type">
-                  <Select name="source" defaultValue={item.source}>
+                  <Select name="source" defaultValue={item.source} disabled={!canEdit}>
                     {revenueSources.map((source) => <option key={source} value={source}>{titleize(source)}</option>)}
                   </Select>
                 </Field>
-                <Field label="Description" className="md:col-span-2"><Input name="description" defaultValue={item.description} required /></Field>
-                <Field label="Projected"><Input name="projected_amount" type="number" min="0" step="0.01" defaultValue={item.projected_amount} required /></Field>
-                <Field label="Actual / received"><Input name="actual_amount" type="number" min="0" step="0.01" defaultValue={item.actual_amount ?? ""} placeholder="Blank until known" /></Field>
+                <Field label="Description" className="md:col-span-2"><Input name="description" defaultValue={item.description} required disabled={!canEdit} /></Field>
+                <Field label="Projected"><Input name="projected_amount" type="number" min="0" step="0.01" defaultValue={item.projected_amount} required disabled={!canEdit} /></Field>
+                <Field label="Actual / received"><Input name="actual_amount" type="number" min="0" step="0.01" defaultValue={item.actual_amount ?? ""} placeholder="Blank until known" disabled={!canEdit} /></Field>
                 <Field label="Status">
-                  <Select name="status" defaultValue={item.status}>
+                  <Select name="status" defaultValue={item.status} disabled={!canEdit}>
                     {revenueStatuses.map((status) => <option key={status} value={status}>{titleize(status)}</option>)}
                   </Select>
                 </Field>
-                <Field label="Notes" className="md:col-span-5"><Input name="notes" defaultValue={item.notes ?? ""} /></Field>
+                <Field label="Notes" className="md:col-span-5"><Input name="notes" defaultValue={item.notes ?? ""} disabled={!canEdit} /></Field>
                 <div className="flex items-end gap-2">
-                  <Button type="submit" variant="secondary">Save</Button>
-                  <DeleteButton
-                    action={deleteRevenueItem}
-                    title="Delete revenue item?"
-                    description={`This will remove "${item.description}" from this event revenue. This cannot be undone.`}
-                  />
+                  {canEdit ? <Button type="submit" variant="secondary">Save</Button> : null}
+                  {canDelete ? (
+                    <DeleteButton
+                      action={deleteRevenueItem}
+                      title="Delete revenue item?"
+                      description={`This will remove "${item.description}" from this event revenue. This cannot be undone.`}
+                    />
+                  ) : null}
                 </div>
               </form>
             </div>
@@ -621,10 +695,12 @@ function SettlementCard({
   eventId,
   totals,
   settlement,
+  canEdit,
 }: {
   eventId: string;
   totals: ReturnType<typeof calculateFinancialSettlement>;
   settlement: Settlement | null;
+  canEdit: boolean;
 }) {
   return (
     <Card>
@@ -646,20 +722,20 @@ function SettlementCard({
         <form action={updateSettlement} className="space-y-3 border-t pt-4">
           <input type="hidden" name="event_id" value={eventId} />
           <Field label="Partner split model">
-            <Select name="partner_split_type" defaultValue={settlement?.partner_split_type ?? "true_50_50"}>
+            <Select name="partner_split_type" defaultValue={settlement?.partner_split_type ?? "true_50_50"} disabled={!canEdit}>
               {splitTypes.map((type) => <option key={type} value={type}>{titleize(type)}</option>)}
             </Select>
           </Field>
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Partner A"><Input name="partner_a_name" defaultValue={cleanPartnerName(settlement?.partner_a_name) ?? ""} /></Field>
-            <Field label="Partner B"><Input name="partner_b_name" defaultValue={settlement?.partner_b_name ?? ""} /></Field>
-            <Field label="Partner A %"><Input name="partner_a_percent" type="number" min="0" max="100" step="0.01" defaultValue={settlement?.partner_a_percent ?? 50} /></Field>
-            <Field label="Partner B %"><Input name="partner_b_percent" type="number" min="0" max="100" step="0.01" defaultValue={settlement?.partner_b_percent ?? 50} /></Field>
+            <Field label="Partner A"><Input name="partner_a_name" defaultValue={cleanPartnerName(settlement?.partner_a_name) ?? ""} disabled={!canEdit} /></Field>
+            <Field label="Partner B"><Input name="partner_b_name" defaultValue={settlement?.partner_b_name ?? ""} disabled={!canEdit} /></Field>
+            <Field label="Partner A %"><Input name="partner_a_percent" type="number" min="0" max="100" step="0.01" defaultValue={settlement?.partner_a_percent ?? 50} disabled={!canEdit} /></Field>
+            <Field label="Partner B %"><Input name="partner_b_percent" type="number" min="0" max="100" step="0.01" defaultValue={settlement?.partner_b_percent ?? 50} disabled={!canEdit} /></Field>
           </div>
           <Field label="Notes">
-            <Textarea name="notes" defaultValue={settlement?.notes ?? ""} />
+            <Textarea name="notes" defaultValue={settlement?.notes ?? ""} disabled={!canEdit} />
           </Field>
-          <Button type="submit" variant="secondary">Save settlement</Button>
+          {canEdit ? <Button type="submit" variant="secondary">Save settlement</Button> : null}
         </form>
       </CardContent>
     </Card>

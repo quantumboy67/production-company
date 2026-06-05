@@ -1,10 +1,12 @@
 import { EventForm } from "@/components/app/event-form";
+import { requireCanManageEvents } from "@/lib/supabase/auth";
 
 export default async function NewEventPage({
   searchParams,
 }: {
   searchParams: Promise<{ date?: string; error?: string }>;
 }) {
+  await requireCanManageEvents();
   const { date, error } = await searchParams;
 
   return (

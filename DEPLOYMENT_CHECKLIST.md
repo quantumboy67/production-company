@@ -4,8 +4,9 @@
 
 - [ ] Create Supabase project.
 - [ ] Enable Email/Password auth.
-- [ ] Apply `supabase/migrations/202606050001_initial_event_command_center.sql`.
+- [ ] Apply all migrations in `supabase/migrations` in order, including Access Control Alpha.
 - [ ] Confirm RLS is enabled on all public app tables.
+- [ ] Confirm existing onboarded users were backfilled into `organization_members` as active Owners.
 - [ ] Confirm private Storage bucket `event-documents` exists.
 - [ ] Create the first Auth user.
 - [ ] Sign in and complete `/onboarding` to create the first organization/profile.
@@ -17,8 +18,11 @@
 
 - [ ] Set `NEXT_PUBLIC_SUPABASE_URL` locally in `.env.local`.
 - [ ] Set `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` locally in `.env.local`.
-- [ ] Confirm no service role key is present in `.env.local`, Vercel env vars, or client code.
+- [ ] Set `SUPABASE_SERVICE_ROLE_KEY` locally in `.env.local` for server-only invite/user management.
+- [ ] Confirm the service role key is never prefixed with `NEXT_PUBLIC_`.
+- [ ] Confirm no service role key appears in browser/client code or logs.
 - [ ] Set the same public Supabase variables in Vercel Project Settings.
+- [ ] Set `SUPABASE_SERVICE_ROLE_KEY` in Vercel Project Settings for Preview/Production before testing Team invites.
 
 ## Vercel
 
@@ -41,16 +45,25 @@ npm run build
 ## Manual Supabase SQL Fallback
 
 ```sql
-insert into public.profiles (id, organization_id, full_name, role)
-select
-  'AUTH_USER_ID_HERE',
-  id,
-  'Your Name',
-  'admin'
-from public.organizations
-where slug = 'juniper-berry-production-company'
-on conflict (id) do update set
-  organization_id = excluded.organization_id,
-  full_name = excluded.full_name,
-  role = excluded.role;
+with org as (
+  select id from public.organizations where slug = 'juniper-berry-production-company'
+),
+profile as (
+  insert into public.profiles (id, organization_id, full_name, email, role)
+  select 'AUTH_USER_ID_HERE', id, 'Your Name', 'you@example.com', 'owner'
+  from org
+  on conflict (id) do update set
+    organization_id = excluded.organization_id,
+    full_name = excluded.full_name,
+    email = excluded.email,
+    role = excluded.role
+  returning id, organization_id
+)
+insert into public.organization_members (organization_id, profile_id, role, status, must_change_password, invited_at)
+select organization_id, id, 'owner', 'active', false, now()
+from profile
+on conflict (organization_id, profile_id) do update set
+  role = 'owner',
+  status = 'active',
+  must_change_password = false;
 ```

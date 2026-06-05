@@ -1,15 +1,21 @@
 import Link from "next/link";
 import Image from "next/image";
-import { LayoutDashboard, Music2 } from "lucide-react";
+import { LayoutDashboard, Music2, Settings } from "lucide-react";
 import { signOut } from "@/app/actions";
 import { Button } from "@/components/ui/button";
+import { canManageUsers } from "@/lib/supabase/auth";
+import type { OrganizationRole } from "@/lib/types";
 
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/events", label: "Events", icon: Music2 },
 ];
 
-export function AppNav() {
+export function AppNav({ role }: { role: OrganizationRole }) {
+  const visibleItems = canManageUsers(role)
+    ? [...items, { href: "/dashboard/settings/team", label: "Settings", icon: Settings }]
+    : items;
+
   return (
     <aside className="flex min-h-screen w-full flex-col border-r bg-card/40 px-3 py-4 lg:w-64">
       <Link href="/dashboard" className="mb-6 block px-2" aria-label="Juniper Berry Production Company dashboard">
@@ -23,7 +29,7 @@ export function AppNav() {
         />
       </Link>
       <nav className="grid gap-1">
-        {items.map((item) => (
+        {visibleItems.map((item) => (
           <Button key={item.href} asChild variant="ghost" className="justify-start">
             <Link href={item.href}>
               <item.icon className="size-4" />

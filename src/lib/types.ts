@@ -2,6 +2,25 @@ export type EventStatus = "planning" | "confirmed" | "active" | "settled" | "can
 export type ItemStatus = "planned" | "quoted" | "approved" | "due" | "paid" | "cancelled";
 export type RevenueStatus = "projected" | "confirmed" | "received";
 export type PartnerSplitType = "true_50_50" | "sweat_equity" | "siloed_revenue_streams" | "custom";
+export type OrganizationRole = "owner" | "admin" | "producer" | "viewer";
+export type OrganizationMemberStatus = "active" | "removed" | "disabled";
+
+export type Profile = {
+  id: string;
+  organization_id: string | null;
+  full_name: string | null;
+  email: string | null;
+  role: string;
+};
+
+export type OrganizationMembership = {
+  id: string;
+  organization_id: string;
+  profile_id: string;
+  role: OrganizationRole;
+  status: OrganizationMemberStatus;
+  must_change_password: boolean;
+};
 
 export type EventRecord = {
   id: string;

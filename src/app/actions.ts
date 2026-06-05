@@ -3,8 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { getProfile, requireUser } from "@/lib/supabase/auth";
+import {
+  getActiveMembership,
+  requireCanDeleteRecords,
+  requireCanEditFinancials,
+  requireCanManageEvents,
+  requireCanManageUsers,
+  requireMembership,
+  requireUser,
+} from "@/lib/supabase/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import type { OrganizationRole } from "@/lib/types";
 
 const eventSchema = z.object({
   id: z.string().uuid().optional(),
@@ -92,6 +102,29 @@ const settlementSchema = z.object({
   notes: z.string().trim().optional(),
 });
 
+const inviteUserSchema = z.object({
+  email: z.string().trim().email("A valid email is required"),
+  full_name: z.string().trim().min(2, "Full name is required"),
+  role: z.enum(["admin", "producer", "viewer"]),
+  temporary_password: z.string().min(10, "Temporary password must be at least 10 characters"),
+});
+
+const memberIdSchema = z.object({
+  member_id: z.string().uuid(),
+});
+
+const updateMemberRoleSchema = memberIdSchema.extend({
+  role: z.enum(["admin", "producer", "viewer"]),
+});
+
+const changePasswordSchema = z.object({
+  password: z.string().min(10, "Password must be at least 10 characters"),
+  confirm_password: z.string().min(10),
+}).refine((value) => value.password === value.confirm_password, {
+  message: "Passwords do not match",
+  path: ["confirm_password"],
+});
+
 export async function signIn(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
@@ -100,6 +133,12 @@ export async function signIn(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
+  }
+
+  const membership = await getActiveMembership({ allowPasswordChange: true });
+
+  if (membership?.must_change_password) {
+    redirect("/change-password");
   }
 
   redirect("/dashboard");
@@ -142,13 +181,32 @@ export async function completeOnboarding(formData: FormData) {
         id: user.id,
         organization_id: organization.id,
         full_name: parsed.data.full_name,
-        role: "admin",
+        email: user.email ?? null,
+        role: "owner",
       },
       { onConflict: "id" },
     );
 
   if (profileError) {
     redirect(`/onboarding?error=${encodeURIComponent(profileError.message)}`);
+  }
+
+  const { error: membershipError } = await supabase
+    .from("organization_members")
+    .upsert(
+      {
+        organization_id: organization.id,
+        profile_id: user.id,
+        role: "owner",
+        status: "active",
+        must_change_password: false,
+        invited_at: new Date().toISOString(),
+      },
+      { onConflict: "organization_id,profile_id" },
+    );
+
+  if (membershipError) {
+    redirect(`/onboarding?error=${encodeURIComponent(membershipError.message)}`);
   }
 
   const demoError = await createDemoEventForOrganization(organization.id);
@@ -162,7 +220,7 @@ export async function completeOnboarding(formData: FormData) {
 }
 
 export async function createEvent(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanManageEvents();
   const parsed = eventSchema.omit({ id: true }).safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
@@ -191,7 +249,7 @@ export async function createEvent(formData: FormData) {
 }
 
 export async function createBudgetItem(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanEditFinancials();
   const parsed = budgetItemSchema.omit({ id: true }).safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "budget", parsed.error.issues[0]?.message);
@@ -212,7 +270,7 @@ export async function createBudgetItem(formData: FormData) {
 }
 
 export async function updateBudgetItem(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanEditFinancials();
   const parsed = budgetItemSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success || !parsed.data.id) redirectToFinancialError(String(formData.get("event_id") ?? ""), "budget", parsed.error?.issues[0]?.message);
@@ -237,7 +295,7 @@ export async function updateBudgetItem(formData: FormData) {
 }
 
 export async function updateBudgetItemsBatch(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanEditFinancials();
   const eventId = String(formData.get("event_id") ?? "");
   const rawRows = String(formData.get("rows") ?? "[]");
   let rows: unknown;
@@ -300,7 +358,7 @@ export async function updateBudgetItemsBatch(formData: FormData) {
 }
 
 export async function deleteBudgetItem(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanDeleteRecords();
   const id = String(formData.get("id") ?? "");
   const eventId = String(formData.get("event_id") ?? "");
   const supabase = await createClient();
@@ -319,7 +377,7 @@ export async function deleteBudgetItem(formData: FormData) {
 }
 
 export async function createRevenueItem(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanEditFinancials();
   const parsed = revenueItemSchema.omit({ id: true }).safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error.issues[0]?.message);
@@ -338,7 +396,7 @@ export async function createRevenueItem(formData: FormData) {
 }
 
 export async function updateRevenueItem(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanEditFinancials();
   const parsed = revenueItemSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success || !parsed.data.id) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error?.issues[0]?.message);
@@ -362,7 +420,7 @@ export async function updateRevenueItem(formData: FormData) {
 }
 
 export async function deleteRevenueItem(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanDeleteRecords();
   const id = String(formData.get("id") ?? "");
   const eventId = String(formData.get("event_id") ?? "");
   const supabase = await createClient();
@@ -381,7 +439,7 @@ export async function deleteRevenueItem(formData: FormData) {
 }
 
 export async function createTicketTier(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanEditFinancials();
   const parsed = ticketTierSchema.omit({ id: true }).safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error.issues[0]?.message);
@@ -400,7 +458,7 @@ export async function createTicketTier(formData: FormData) {
 }
 
 export async function updateTicketTier(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanEditFinancials();
   const parsed = ticketTierSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success || !parsed.data.id) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error?.issues[0]?.message);
@@ -424,7 +482,7 @@ export async function updateTicketTier(formData: FormData) {
 }
 
 export async function deleteTicketTier(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanDeleteRecords();
   const id = String(formData.get("id") ?? "");
   const eventId = String(formData.get("event_id") ?? "");
   const supabase = await createClient();
@@ -443,7 +501,7 @@ export async function deleteTicketTier(formData: FormData) {
 }
 
 export async function updateSettlement(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanEditFinancials();
   const parsed = settlementSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", parsed.error.issues[0]?.message);
@@ -473,7 +531,7 @@ function redirectToFinancialError(eventId: string, tab: "budget" | "revenue", me
 }
 
 export async function createDemoEvent() {
-  const profile = await getProfile();
+  const profile = await requireCanManageEvents();
   const demoError = await createDemoEventForOrganization(profile.organization_id);
 
   if (demoError) {
@@ -486,7 +544,7 @@ export async function createDemoEvent() {
 }
 
 export async function updateEvent(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanManageEvents();
   const parsed = eventSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success || !parsed.data.id) {
@@ -516,7 +574,7 @@ export async function updateEvent(formData: FormData) {
 }
 
 export async function deleteEvent(formData: FormData) {
-  const profile = await getProfile();
+  const profile = await requireCanDeleteRecords();
   const id = String(formData.get("id") ?? "");
   const supabase = await createClient();
   const { error } = await supabase
@@ -531,6 +589,221 @@ export async function deleteEvent(formData: FormData) {
 
   revalidatePath("/dashboard/events");
   redirect("/dashboard/events");
+}
+
+export async function inviteUser(formData: FormData) {
+  const membership = await requireCanManageUsers();
+  const parsed = inviteUserSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    redirect(`/dashboard/settings/team?error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid invite")}`);
+  }
+
+  const supabase = await createClient();
+  const admin = createAdminClient();
+  const { data: authUser, error: authError } = await admin.auth.admin.createUser({
+    email: parsed.data.email,
+    password: parsed.data.temporary_password,
+    email_confirm: true,
+    user_metadata: {
+      full_name: parsed.data.full_name,
+    },
+  });
+
+  if (authError || !authUser.user) {
+    redirect(`/dashboard/settings/team?error=${encodeURIComponent(authError?.message ?? "Unable to create user")}`);
+  }
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        id: authUser.user.id,
+        organization_id: membership.organization_id,
+        full_name: parsed.data.full_name,
+        email: parsed.data.email,
+        role: parsed.data.role,
+      },
+      { onConflict: "id" },
+    );
+
+  if (profileError) {
+    redirect(`/dashboard/settings/team?error=${encodeURIComponent(profileError.message)}`);
+  }
+
+  const { error: memberError } = await supabase
+    .from("organization_members")
+    .upsert(
+      {
+        organization_id: membership.organization_id,
+        profile_id: authUser.user.id,
+        role: parsed.data.role,
+        status: "active",
+        must_change_password: true,
+        invited_by: membership.profile_id,
+        invited_at: new Date().toISOString(),
+        deactivated_at: null,
+      },
+      { onConflict: "organization_id,profile_id" },
+    );
+
+  if (memberError) {
+    redirect(`/dashboard/settings/team?error=${encodeURIComponent(memberError.message)}`);
+  }
+
+  revalidatePath("/dashboard/settings/team");
+  redirect(`/dashboard/settings/team?success=${encodeURIComponent(`Invited ${parsed.data.email}. Share the temporary password directly.`)}`);
+}
+
+export async function updateMemberRole(formData: FormData) {
+  const membership = await requireCanManageUsers();
+  const parsed = updateMemberRoleSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    redirect(`/dashboard/settings/team?error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid role update")}`);
+  }
+
+  const supabase = await createClient();
+  const target = await getOrganizationMember(supabase, membership.organization_id, parsed.data.member_id);
+
+  if (!target) {
+    redirect("/dashboard/settings/team?error=Member not found");
+  }
+
+  if (target.role === "owner") {
+    redirect("/dashboard/settings/team?error=Owner roles cannot be changed in alpha.");
+  }
+
+  if (membership.role === "admin" && parsed.data.role === "admin") {
+    // Admins may promote non-owner users to Admin in this alpha.
+  }
+
+  const { error } = await supabase
+    .from("organization_members")
+    .update({ role: parsed.data.role })
+    .eq("id", parsed.data.member_id)
+    .eq("organization_id", membership.organization_id);
+
+  if (error) {
+    redirect(`/dashboard/settings/team?error=${encodeURIComponent(error.message)}`);
+  }
+
+  await supabase
+    .from("profiles")
+    .update({ role: parsed.data.role })
+    .eq("id", target.profile_id)
+    .eq("organization_id", membership.organization_id);
+
+  revalidatePath("/dashboard/settings/team");
+  redirect("/dashboard/settings/team?success=Role updated");
+}
+
+export async function forceMemberPasswordChange(formData: FormData) {
+  const membership = await requireCanManageUsers();
+  const parsed = memberIdSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    redirect("/dashboard/settings/team?error=Invalid member");
+  }
+
+  const supabase = await createClient();
+  const target = await getOrganizationMember(supabase, membership.organization_id, parsed.data.member_id);
+
+  if (!target) {
+    redirect("/dashboard/settings/team?error=Member not found");
+  }
+
+  if (target.role === "owner" && membership.role !== "owner") {
+    redirect("/dashboard/settings/team?error=Admins cannot force password changes for Owners.");
+  }
+
+  const { error } = await supabase
+    .from("organization_members")
+    .update({ must_change_password: true })
+    .eq("id", parsed.data.member_id)
+    .eq("organization_id", membership.organization_id);
+
+  if (error) {
+    redirect(`/dashboard/settings/team?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath("/dashboard/settings/team");
+  redirect("/dashboard/settings/team?success=Password change required on next login");
+}
+
+export async function removeMember(formData: FormData) {
+  const membership = await requireCanManageUsers();
+  const parsed = memberIdSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    redirect("/dashboard/settings/team?error=Invalid member");
+  }
+
+  const supabase = await createClient();
+  const target = await getOrganizationMember(supabase, membership.organization_id, parsed.data.member_id);
+
+  if (!target) {
+    redirect("/dashboard/settings/team?error=Member not found");
+  }
+
+  if (target.role === "owner" && membership.role !== "owner") {
+    redirect("/dashboard/settings/team?error=Admins cannot remove Owners.");
+  }
+
+  if (target.role === "owner") {
+    const ownerCount = await countActiveOwners(supabase, membership.organization_id);
+
+    if (ownerCount <= 1) {
+      redirect("/dashboard/settings/team?error=Cannot remove the last Owner.");
+    }
+  }
+
+  const { error } = await supabase
+    .from("organization_members")
+    .update({
+      status: "removed",
+      deactivated_at: new Date().toISOString(),
+      must_change_password: false,
+    })
+    .eq("id", parsed.data.member_id)
+    .eq("organization_id", membership.organization_id);
+
+  if (error) {
+    redirect(`/dashboard/settings/team?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath("/dashboard/settings/team");
+  redirect("/dashboard/settings/team?success=Member removed");
+}
+
+export async function changePassword(formData: FormData) {
+  const membership = await requireMembership({ allowPasswordChange: true });
+  const parsed = changePasswordSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    redirect(`/change-password?error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid password")}`);
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+
+  if (error) {
+    redirect(`/change-password?error=${encodeURIComponent(error.message)}`);
+  }
+
+  const admin = createAdminClient();
+  const { error: memberError } = await admin
+    .from("organization_members")
+    .update({ must_change_password: false })
+    .eq("id", membership.id)
+    .eq("profile_id", membership.profile_id);
+
+  if (memberError) {
+    redirect(`/change-password?error=${encodeURIComponent(memberError.message)}`);
+  }
+
+  revalidatePath("/dashboard", "layout");
+  redirect("/dashboard");
 }
 
 async function requireEventAccess(
@@ -594,6 +867,37 @@ async function requireBudgetItemsAccess(
 
 function uniqueContactIds(rows: z.infer<typeof batchBudgetItemsSchema>["rows"]) {
   return [...new Set(rows.map((row) => row.vendor_contact_id).filter((id): id is string => Boolean(id)))];
+}
+
+async function getOrganizationMember(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  organizationId: string,
+  memberId: string,
+) {
+  const { data, error } = await supabase
+    .from("organization_members")
+    .select("id, organization_id, profile_id, role, status")
+    .eq("id", memberId)
+    .eq("organization_id", organizationId)
+    .single();
+
+  if (error) return null;
+  return data as { id: string; organization_id: string; profile_id: string; role: OrganizationRole; status: string };
+}
+
+async function countActiveOwners(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  organizationId: string,
+) {
+  const { count, error } = await supabase
+    .from("organization_members")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", organizationId)
+    .eq("role", "owner")
+    .eq("status", "active");
+
+  if (error) return 0;
+  return count ?? 0;
 }
 
 function slugify(value: string) {

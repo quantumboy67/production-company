@@ -13,7 +13,7 @@ Private internal MVP for Juniper Berry Production Company's live music event pro
 1. Create a Supabase project.
 2. In Supabase, enable Email/Password auth under Authentication > Providers.
 3. Copy the Project URL and publishable/anon key from Project Settings > API.
-4. Apply the migration in `supabase/migrations/202606050001_initial_event_command_center.sql`.
+4. Apply the migrations in `supabase/migrations` in order.
 
 You can apply the migration with the Supabase SQL editor, or with the Supabase CLI after linking the project:
 
@@ -30,6 +30,7 @@ The migration creates:
 - Private `event-documents` Storage bucket
 - Default budget categories and task templates
 - Sample event data for `Cedric Burnside @ Fairweather`
+- Access Control Alpha membership roles and RLS policies
 
 ## First User And Organization
 
@@ -42,18 +43,27 @@ The migration creates:
 Manual SQL is only needed as a fallback/admin repair path:
 
 ```sql
-insert into public.profiles (id, organization_id, full_name, role)
-select
-  'AUTH_USER_ID_HERE',
-  id,
-  'Your Name',
-  'admin'
-from public.organizations
-where slug = 'juniper-berry-production-company'
-on conflict (id) do update set
-  organization_id = excluded.organization_id,
-  full_name = excluded.full_name,
-  role = excluded.role;
+with org as (
+  select id from public.organizations where slug = 'juniper-berry-production-company'
+),
+profile as (
+  insert into public.profiles (id, organization_id, full_name, email, role)
+  select 'AUTH_USER_ID_HERE', id, 'Your Name', 'you@example.com', 'owner'
+  from org
+  on conflict (id) do update set
+    organization_id = excluded.organization_id,
+    full_name = excluded.full_name,
+    email = excluded.email,
+    role = excluded.role
+  returning id, organization_id
+)
+insert into public.organization_members (organization_id, profile_id, role, status, must_change_password, invited_at)
+select organization_id, id, 'owner', 'active', false, now()
+from profile
+on conflict (organization_id, profile_id) do update set
+  role = 'owner',
+  status = 'active',
+  must_change_password = false;
 ```
 
 If a signed-in user already has a profile and organization, `/onboarding` redirects back to `/dashboard`.
@@ -85,7 +95,13 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-or-anon-key
 ```
 
-Do not put a Supabase service role key in any `NEXT_PUBLIC_` variable. This app currently uses only the publishable/anon key with Supabase Auth and RLS.
+For Access Control Alpha, add the service role key locally as a server-only variable:
+
+```bash
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+Do not put a Supabase service role key in any `NEXT_PUBLIC_` variable. Never log it, render it, or import the admin client into client components.
 
 4. Start the app:
 
@@ -123,6 +139,7 @@ After generating types, wire `database.types.ts` into `src/lib/supabase/server.t
 ```bash
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+SUPABASE_SERVICE_ROLE_KEY
 ```
 
 4. Confirm the build command is:
@@ -151,6 +168,9 @@ Implemented first:
 - Seeded support act line for The Sugar Thieves
 - Ticket tiers for GA and VIP 4-top tables
 - Settlement calculations for gross revenue, expenses, net profit/loss, break-even, and partner split
+- Invite-only Team management for Owner/Admin users
+- Forced password change for temporary-password users
+- Viewer read-only restrictions and Producer event/financial editing permissions
 
 Scaffolded for next phases:
 
