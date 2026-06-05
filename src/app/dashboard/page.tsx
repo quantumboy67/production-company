@@ -166,6 +166,33 @@ export default async function DashboardPage({
 
         {showUpcoming ? <UpcomingEventsTable events={upcomingEvents} /> : null}
       </section>
+
+      <section className="space-y-3 print:hidden">
+        <div>
+          <h2 className="text-lg font-semibold">Roadmap / Coming soon</h2>
+          <p className="text-sm text-muted-foreground">
+            Planned modules are placeholders while the financial beta path remains primary.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <ComingSoonCard
+            title="My Team"
+            description="A future people-facing view of Juniper Berry team members, roles, and production responsibilities. Settings -> Team remains the admin user management area."
+          />
+          <ComingSoonCard
+            title="My Contacts"
+            description="A future CRM for artists, agents, venues, sponsors, vendors, media, and production relationships. My Team members should appear here automatically later."
+          />
+          <ComingSoonCard
+            title="Receipts & Invoices"
+            description="A future financial document workspace for attaching receipts, invoices, quotes, and settlement support to expense items."
+          />
+          <ComingSoonCard
+            title="My Auditor"
+            description="A future control checklist for missing documents, unpaid items, data gaps, financial inconsistencies, and readiness review."
+          />
+        </div>
+      </section>
     </div>
   );
 }
@@ -200,6 +227,22 @@ function MetricCard({ label, value, detail, muted }: { label: string; value: str
       <CardContent>
         <p className={muted ? "text-2xl font-semibold text-muted-foreground" : "text-2xl font-semibold"}>{value}</p>
         <p className="mt-2 text-xs text-muted-foreground">{detail}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ComingSoonCard({ title, description }: { title: string; description: string }) {
+  return (
+    <Card className="bg-muted/20">
+      <CardHeader className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base">{title}</CardTitle>
+          <Badge className="bg-background">Coming soon</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </CardContent>
     </Card>
   );
