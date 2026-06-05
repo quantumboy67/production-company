@@ -65,3 +65,12 @@
 - [ ] File upload UI is not implemented yet.
 - [ ] Confirm the private `event-documents` bucket exists.
 - [ ] Confirm Storage policies require authenticated users and an organization-prefixed path.
+
+## Beta Readiness Smoke
+
+- [ ] Confirm live beta URL access does not unexpectedly require Vercel login, or document the Vercel share/protection flow for testers.
+- [ ] Confirm primary navigation shows only beta-ready modules.
+- [ ] Confirm scaffold-only modules are hidden, disabled, or clearly marked as coming later.
+- [ ] Confirm approved Juniper Berry logo and favicon are visible after deployment.
+- [ ] Confirm existing demo/QA settlement partner names use Juniper Berry Production Company.
+- [ ] Confirm dashboard financial labels match event settlement terminology.

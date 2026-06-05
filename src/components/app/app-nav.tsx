@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { CalendarDays, ContactRound, LayoutDashboard, MapPin, Music2, Settings } from "lucide-react";
+import Image from "next/image";
+import { ContactRound, LayoutDashboard, MapPin, Music2, Settings } from "lucide-react";
 import { signOut } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 
@@ -14,9 +15,15 @@ const items = [
 export function AppNav() {
   return (
     <aside className="flex min-h-screen w-full flex-col border-r bg-card/40 px-3 py-4 lg:w-64">
-      <Link href="/dashboard" className="mb-6 flex items-center gap-2 px-2 text-sm font-semibold">
-        <CalendarDays className="size-5 text-primary" />
-        Juniper Berry Production Company
+      <Link href="/dashboard" className="mb-6 block px-2" aria-label="Juniper Berry Production Company dashboard">
+        <Image
+          src="/juniper-berry-logo.png"
+          alt="Juniper Berry Production Company"
+          width={1016}
+          height={290}
+          priority
+          className="h-auto w-full max-w-[13rem] rounded-md"
+        />
       </Link>
       <nav className="grid gap-1">
         {items.map((item) => (

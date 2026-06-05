@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { signIn } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,9 +14,17 @@ export default async function LoginPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Juniper Berry Production Company</CardTitle>
+      <Card className="w-full max-w-md">
+        <CardHeader className="items-center text-center">
+          <Image
+            src="/juniper-berry-logo.png"
+            alt="Juniper Berry Production Company"
+            width={1016}
+            height={290}
+            priority
+            className="h-auto w-full max-w-sm rounded-md"
+          />
+          <CardTitle className="sr-only">Juniper Berry Production Company</CardTitle>
           <CardDescription>Sign in to manage live event production.</CardDescription>
         </CardHeader>
         <CardContent>
