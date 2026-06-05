@@ -25,7 +25,7 @@ export default async function LoginPage({
             className="h-auto w-full max-w-sm rounded-md"
           />
           <CardTitle className="sr-only">Juniper Berry Production Company</CardTitle>
-          <CardDescription>Sign in to manage live event production.</CardDescription>
+          <CardDescription>Live Event Command Center</CardDescription>
         </CardHeader>
         <CardContent>
           {error ? (

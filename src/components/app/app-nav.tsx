@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { LayoutDashboard, Music2, Settings } from "lucide-react";
+import { ClipboardCheck, Contact, LayoutDashboard, Music2, ReceiptText, Settings, Users } from "lucide-react";
 import { signOut } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { canManageUsers } from "@/lib/supabase/auth";
@@ -9,6 +9,13 @@ import type { OrganizationRole } from "@/lib/types";
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/events", label: "Events", icon: Music2 },
+];
+
+const comingSoonItems = [
+  { label: "My Team", icon: Users },
+  { label: "My Contacts", icon: Contact },
+  { label: "Receipts & Invoices", icon: ReceiptText },
+  { label: "My Auditor", icon: ClipboardCheck },
 ];
 
 export function AppNav({ role }: { role: OrganizationRole }) {
@@ -38,14 +45,32 @@ export function AppNav({ role }: { role: OrganizationRole }) {
           </Button>
         ))}
       </nav>
+      <div className="mt-5 border-t pt-4">
+        <p className="px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Coming soon</p>
+        <div className="mt-2 grid gap-1">
+          {comingSoonItems.map((item) => (
+            <div
+              key={item.label}
+              className="flex h-9 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground opacity-80"
+              aria-disabled="true"
+            >
+              <item.icon className="size-4" />
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
       <div className="mt-4 rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
         Beta focus: event budgets, revenue, ticket tiers, and settlement tracking.
       </div>
-      <form action={signOut} className="mt-auto">
-        <Button type="submit" variant="outline" className="w-full justify-start">
-          Sign out
-        </Button>
-      </form>
+      <div className="mt-auto space-y-3">
+        <p className="px-2 text-xs text-muted-foreground">&copy; {new Date().getFullYear()} Giant Juniper LLC</p>
+        <form action={signOut}>
+          <Button type="submit" variant="outline" className="w-full justify-start">
+            Sign out
+          </Button>
+        </form>
+      </div>
     </aside>
   );
 }
