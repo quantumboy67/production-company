@@ -1,6 +1,6 @@
-# Event Command Center
+# Juniper Berry Production Company
 
-Private internal MVP for live music event production management.
+Private internal MVP for Juniper Berry Production Company's live music event production management.
 
 ## Stack
 
@@ -49,7 +49,7 @@ select
   'Your Name',
   'admin'
 from public.organizations
-where slug = 'desert-night-productions'
+where slug = 'juniper-berry-production-company'
 on conflict (id) do update set
   organization_id = excluded.organization_id,
   full_name = excluded.full_name,

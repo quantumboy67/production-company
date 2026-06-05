@@ -429,7 +429,7 @@ insert into public.task_templates (name, category, title, priority, sort_order) 
 
 with org as (
   insert into public.organizations (name, slug)
-  values ('Desert Night Productions', 'desert-night-productions')
+  values ('Juniper Berry Production Company', 'juniper-berry-production-company')
   returning id
 ),
 venue as (
@@ -495,7 +495,7 @@ with event as (
   select id, organization_id from public.events where name = 'Cedric Burnside @ Fairweather'
 )
 insert into public.settlements (organization_id, event_id, partner_split_type, partner_a_name, partner_b_name, partner_a_percent, partner_b_percent, notes)
-select organization_id, id, 'true_50_50'::public.partner_split_type, 'Production Company', 'Venue Partner', 50, 50, 'Default true 50/50 split.'
+select organization_id, id, 'true_50_50'::public.partner_split_type, 'Juniper Berry Production Company', 'Venue Partner', 50, 50, 'Default true 50/50 split.'
 from event;
 
 grant usage on schema public to anon, authenticated;

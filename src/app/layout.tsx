@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Event Command Center",
-  description: "Internal live music production management",
+  title: "Juniper Berry Production Company",
+  description: "Internal live music production management for Juniper Berry Production Company",
 };
 
 export default function RootLayout({

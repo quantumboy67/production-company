@@ -16,7 +16,7 @@ export function AppNav() {
     <aside className="flex min-h-screen w-full flex-col border-r bg-card/40 px-3 py-4 lg:w-64">
       <Link href="/dashboard" className="mb-6 flex items-center gap-2 px-2 text-sm font-semibold">
         <CalendarDays className="size-5 text-primary" />
-        Event Command Center
+        Juniper Berry Production Company
       </Link>
       <nav className="grid gap-1">
         {items.map((item) => (

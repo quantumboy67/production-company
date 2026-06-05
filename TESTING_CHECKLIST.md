@@ -1,4 +1,4 @@
-# Testing Checklist
+# Juniper Berry Production Company Testing Checklist
 
 ## Auth
 
@@ -32,14 +32,17 @@
 - [ ] Confirm hard costs and soft costs render separately.
 - [ ] Confirm the headliner guarantee is `$10,000`.
 - [ ] Confirm support act line exists for `The Sugar Thieves`.
-- [ ] Budget CRUD is not implemented yet; verify seeded budget rows render correctly.
+- [ ] Add, edit, batch-save, discard, and delete budget rows.
+- [ ] Confirm budget delete requires confirmation before removal.
 
 ## Revenue And Ticket Tiers
 
 - [ ] Select `Revenue / Settlement`.
 - [ ] Confirm ticket tiers include `GA` and `VIP 4-top tables`.
 - [ ] Confirm projected gross uses ticket price times tier capacity.
-- [ ] Revenue and ticket tier CRUD are not implemented yet; verify seeded rows render correctly.
+- [ ] Add, edit, and delete revenue rows.
+- [ ] Add, edit, and delete ticket tiers.
+- [ ] Confirm revenue and ticket tier deletes require confirmation before removal.
 
 ## Settlement
 

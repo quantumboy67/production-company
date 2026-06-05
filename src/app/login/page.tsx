@@ -15,7 +15,7 @@ export default async function LoginPage({
     <main className="flex min-h-screen items-center justify-center p-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Event Command Center</CardTitle>
+          <CardTitle>Juniper Berry Production Company</CardTitle>
           <CardDescription>Sign in to manage live event production.</CardDescription>
         </CardHeader>
         <CardContent>

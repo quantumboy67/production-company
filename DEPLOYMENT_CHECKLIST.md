@@ -1,4 +1,4 @@
-# Deployment Checklist
+# Juniper Berry Production Company Deployment Checklist
 
 ## Supabase
 
@@ -47,7 +47,7 @@ select
   'Your Name',
   'admin'
 from public.organizations
-where slug = 'desert-night-productions'
+where slug = 'juniper-berry-production-company'
 on conflict (id) do update set
   organization_id = excluded.organization_id,
   full_name = excluded.full_name,

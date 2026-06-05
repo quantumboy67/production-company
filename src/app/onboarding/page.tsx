@@ -46,7 +46,7 @@ export default async function OnboardingPage({
             </div>
             <div>
               <Label htmlFor="organization_name">Organization name</Label>
-              <Input id="organization_name" name="organization_name" placeholder="Production Company" required />
+              <Input id="organization_name" name="organization_name" placeholder="Juniper Berry Production Company" required />
             </div>
             <PendingSubmitButton idleLabel="Create workspace" pendingLabel="Creating..." />
           </form>
