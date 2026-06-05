@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { logAuditEvent } from "@/lib/audit";
 import {
   getActiveMembership,
   requireCanDeleteRecords,
@@ -237,12 +238,23 @@ export async function createEvent(formData: FormData) {
       capacity: parsed.data.capacity || null,
       notes: parsed.data.notes || null,
     })
-    .select("id")
+    .select("*")
     .single();
 
   if (error) {
     redirect(`/dashboard/events/new?error=${encodeURIComponent(error.message)}`);
   }
+
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "event",
+    entityId: data.id,
+    action: "event.created",
+    summary: `Created event "${data.name}".`,
+    afterData: summarizeEvent(data),
+    metadata: { event_id: data.id },
+  });
 
   revalidatePath("/dashboard/events");
   redirect(`/dashboard/events/${data.id}`);
@@ -258,13 +270,27 @@ export async function createBudgetItem(formData: FormData) {
   await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
   await requireContactAccess(supabase, profile.organization_id, parsed.data.vendor_contact_id);
 
-  const { error } = await supabase.from("budget_items").insert({
-    organization_id: profile.organization_id,
-    ...parsed.data,
-    notes: parsed.data.notes || null,
-  });
+  const { data, error } = await supabase
+    .from("budget_items")
+    .insert({
+      organization_id: profile.organization_id,
+      ...parsed.data,
+      notes: parsed.data.notes || null,
+    })
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(parsed.data.event_id, "budget", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "budget_item",
+    entityId: data.id,
+    action: "budget_item.created",
+    summary: `Created budget item "${data.description}".`,
+    afterData: summarizeBudgetItem(data),
+    metadata: { event_id: parsed.data.event_id },
+  });
   revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
   redirect(`/dashboard/events/${parsed.data.event_id}?tab=budget`);
 }
@@ -279,7 +305,8 @@ export async function updateBudgetItem(formData: FormData) {
   await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
   await requireContactAccess(supabase, profile.organization_id, parsed.data.vendor_contact_id);
   const { id, ...values } = parsed.data;
-  const { error } = await supabase
+  const before = await getBudgetItemForAudit(supabase, profile.organization_id, values.event_id, id);
+  const { data, error } = await supabase
     .from("budget_items")
     .update({
       ...values,
@@ -287,9 +314,22 @@ export async function updateBudgetItem(formData: FormData) {
     })
     .eq("id", id)
     .eq("event_id", values.event_id)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(values.event_id, "budget", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "budget_item",
+    entityId: id,
+    action: "budget_item.updated",
+    summary: `Updated budget item "${data.description}".`,
+    beforeData: before ? summarizeBudgetItem(before) : null,
+    afterData: summarizeBudgetItem(data),
+    metadata: { event_id: values.event_id },
+  });
   revalidatePath(`/dashboard/events/${values.event_id}`);
   redirect(`/dashboard/events/${values.event_id}?tab=budget`);
 }
@@ -336,6 +376,12 @@ export async function updateBudgetItemsBatch(formData: FormData) {
     };
   }
 
+  const beforeRows = await getBudgetItemsForAudit(
+    supabase,
+    profile.organization_id,
+    parsed.data.event_id,
+    parsed.data.rows.map((row) => row.id),
+  );
   const updates = parsed.data.rows.map(({ id, ...values }) => ({
     id,
     event_id: parsed.data.event_id,
@@ -353,6 +399,28 @@ export async function updateBudgetItemsBatch(formData: FormData) {
     return { ok: false, message: error.message };
   }
 
+  const afterRows = await getBudgetItemsForAudit(
+    supabase,
+    profile.organization_id,
+    parsed.data.event_id,
+    parsed.data.rows.map((row) => row.id),
+  );
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "budget_item",
+    entityId: parsed.data.event_id,
+    action: "budget_items.batch_updated",
+    summary: `Batch updated ${updates.length} budget ${updates.length === 1 ? "item" : "items"}.`,
+    beforeData: beforeRows.map(summarizeBudgetItem),
+    afterData: afterRows.map(summarizeBudgetItem),
+    metadata: {
+      event_id: parsed.data.event_id,
+      changed_count: updates.length,
+      changed_item_ids: updates.map((row) => row.id),
+    },
+  });
+
   revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
   return { ok: true, message: `Saved ${updates.length} budget ${updates.length === 1 ? "row" : "rows"}.` };
 }
@@ -364,6 +432,7 @@ export async function deleteBudgetItem(formData: FormData) {
   const supabase = await createClient();
 
   await requireEventAccess(supabase, profile.organization_id, eventId);
+  const before = await getBudgetItemForAudit(supabase, profile.organization_id, eventId, id);
   const { error } = await supabase
     .from("budget_items")
     .delete()
@@ -372,6 +441,16 @@ export async function deleteBudgetItem(formData: FormData) {
     .eq("organization_id", profile.organization_id);
 
   if (error) redirectToFinancialError(eventId, "budget", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "budget_item",
+    entityId: id,
+    action: "budget_item.deleted",
+    summary: `Deleted budget item "${before?.description ?? id}".`,
+    beforeData: before ? summarizeBudgetItem(before) : null,
+    metadata: { event_id: eventId },
+  });
   revalidatePath(`/dashboard/events/${eventId}`);
   redirect(`/dashboard/events/${eventId}?tab=budget`);
 }
@@ -384,13 +463,27 @@ export async function createRevenueItem(formData: FormData) {
 
   const supabase = await createClient();
   await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
-  const { error } = await supabase.from("revenue_items").insert({
-    organization_id: profile.organization_id,
-    ...parsed.data,
-    notes: parsed.data.notes || null,
-  });
+  const { data, error } = await supabase
+    .from("revenue_items")
+    .insert({
+      organization_id: profile.organization_id,
+      ...parsed.data,
+      notes: parsed.data.notes || null,
+    })
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(parsed.data.event_id, "revenue", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "revenue_item",
+    entityId: data.id,
+    action: "revenue_item.created",
+    summary: `Created revenue item "${data.description}".`,
+    afterData: summarizeRevenueItem(data),
+    metadata: { event_id: parsed.data.event_id },
+  });
   revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
   redirect(`/dashboard/events/${parsed.data.event_id}?tab=revenue`);
 }
@@ -404,7 +497,8 @@ export async function updateRevenueItem(formData: FormData) {
   const supabase = await createClient();
   await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
   const { id, ...values } = parsed.data;
-  const { error } = await supabase
+  const before = await getRevenueItemForAudit(supabase, profile.organization_id, values.event_id, id);
+  const { data, error } = await supabase
     .from("revenue_items")
     .update({
       ...values,
@@ -412,9 +506,22 @@ export async function updateRevenueItem(formData: FormData) {
     })
     .eq("id", id)
     .eq("event_id", values.event_id)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(values.event_id, "revenue", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "revenue_item",
+    entityId: id,
+    action: "revenue_item.updated",
+    summary: `Updated revenue item "${data.description}".`,
+    beforeData: before ? summarizeRevenueItem(before) : null,
+    afterData: summarizeRevenueItem(data),
+    metadata: { event_id: values.event_id },
+  });
   revalidatePath(`/dashboard/events/${values.event_id}`);
   redirect(`/dashboard/events/${values.event_id}?tab=revenue`);
 }
@@ -426,6 +533,7 @@ export async function deleteRevenueItem(formData: FormData) {
   const supabase = await createClient();
 
   await requireEventAccess(supabase, profile.organization_id, eventId);
+  const before = await getRevenueItemForAudit(supabase, profile.organization_id, eventId, id);
   const { error } = await supabase
     .from("revenue_items")
     .delete()
@@ -434,6 +542,16 @@ export async function deleteRevenueItem(formData: FormData) {
     .eq("organization_id", profile.organization_id);
 
   if (error) redirectToFinancialError(eventId, "revenue", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "revenue_item",
+    entityId: id,
+    action: "revenue_item.deleted",
+    summary: `Deleted revenue item "${before?.description ?? id}".`,
+    beforeData: before ? summarizeRevenueItem(before) : null,
+    metadata: { event_id: eventId },
+  });
   revalidatePath(`/dashboard/events/${eventId}`);
   redirect(`/dashboard/events/${eventId}?tab=revenue`);
 }
@@ -446,13 +564,27 @@ export async function createTicketTier(formData: FormData) {
 
   const supabase = await createClient();
   await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
-  const { error } = await supabase.from("ticket_tiers").insert({
-    organization_id: profile.organization_id,
-    ...parsed.data,
-    notes: parsed.data.notes || null,
-  });
+  const { data, error } = await supabase
+    .from("ticket_tiers")
+    .insert({
+      organization_id: profile.organization_id,
+      ...parsed.data,
+      notes: parsed.data.notes || null,
+    })
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(parsed.data.event_id, "revenue", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "ticket_tier",
+    entityId: data.id,
+    action: "ticket_tier.created",
+    summary: `Created ticket tier "${data.name}".`,
+    afterData: summarizeTicketTier(data),
+    metadata: { event_id: parsed.data.event_id },
+  });
   revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
   redirect(`/dashboard/events/${parsed.data.event_id}?tab=revenue`);
 }
@@ -466,7 +598,8 @@ export async function updateTicketTier(formData: FormData) {
   const supabase = await createClient();
   await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
   const { id, ...values } = parsed.data;
-  const { error } = await supabase
+  const before = await getTicketTierForAudit(supabase, profile.organization_id, values.event_id, id);
+  const { data, error } = await supabase
     .from("ticket_tiers")
     .update({
       ...values,
@@ -474,9 +607,22 @@ export async function updateTicketTier(formData: FormData) {
     })
     .eq("id", id)
     .eq("event_id", values.event_id)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(values.event_id, "revenue", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "ticket_tier",
+    entityId: id,
+    action: "ticket_tier.updated",
+    summary: `Updated ticket tier "${data.name}".`,
+    beforeData: before ? summarizeTicketTier(before) : null,
+    afterData: summarizeTicketTier(data),
+    metadata: { event_id: values.event_id },
+  });
   revalidatePath(`/dashboard/events/${values.event_id}`);
   redirect(`/dashboard/events/${values.event_id}?tab=revenue`);
 }
@@ -488,6 +634,7 @@ export async function deleteTicketTier(formData: FormData) {
   const supabase = await createClient();
 
   await requireEventAccess(supabase, profile.organization_id, eventId);
+  const before = await getTicketTierForAudit(supabase, profile.organization_id, eventId, id);
   const { error } = await supabase
     .from("ticket_tiers")
     .delete()
@@ -496,6 +643,16 @@ export async function deleteTicketTier(formData: FormData) {
     .eq("organization_id", profile.organization_id);
 
   if (error) redirectToFinancialError(eventId, "revenue", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "ticket_tier",
+    entityId: id,
+    action: "ticket_tier.deleted",
+    summary: `Deleted ticket tier "${before?.name ?? id}".`,
+    beforeData: before ? summarizeTicketTier(before) : null,
+    metadata: { event_id: eventId },
+  });
   revalidatePath(`/dashboard/events/${eventId}`);
   redirect(`/dashboard/events/${eventId}?tab=revenue`);
 }
@@ -508,7 +665,8 @@ export async function updateSettlement(formData: FormData) {
 
   const supabase = await createClient();
   await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
-  const { error } = await supabase
+  const before = await getSettlementForAudit(supabase, profile.organization_id, parsed.data.event_id);
+  const { data, error } = await supabase
     .from("settlements")
     .upsert(
       {
@@ -519,15 +677,148 @@ export async function updateSettlement(formData: FormData) {
         notes: parsed.data.notes || null,
       },
       { onConflict: "event_id" },
-    );
+    )
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(parsed.data.event_id, "revenue", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "settlement",
+    entityId: data.id,
+    action: "settlement.updated",
+    summary: "Updated settlement.",
+    beforeData: before ? summarizeSettlement(before) : null,
+    afterData: summarizeSettlement(data),
+    metadata: { event_id: parsed.data.event_id },
+  });
   revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
   redirect(`/dashboard/events/${parsed.data.event_id}?tab=revenue`);
 }
 
 function redirectToFinancialError(eventId: string, tab: "budget" | "revenue", message = "Invalid financial item"): never {
   redirect(`/dashboard/events/${eventId}?tab=${tab}&error=${encodeURIComponent(message)}`);
+}
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+type AuditRow = Record<string, unknown>;
+
+async function getEventForAudit(supabase: SupabaseServerClient, organizationId: string, eventId: string) {
+  const { data } = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", eventId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  return data as AuditRow | null;
+}
+
+async function getBudgetItemForAudit(supabase: SupabaseServerClient, organizationId: string, eventId: string, id: string) {
+  const { data } = await supabase
+    .from("budget_items")
+    .select("*")
+    .eq("id", id)
+    .eq("event_id", eventId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  return data as AuditRow | null;
+}
+
+async function getBudgetItemsForAudit(supabase: SupabaseServerClient, organizationId: string, eventId: string, ids: string[]) {
+  const { data } = await supabase
+    .from("budget_items")
+    .select("*")
+    .eq("event_id", eventId)
+    .eq("organization_id", organizationId)
+    .in("id", ids);
+
+  return (data ?? []) as AuditRow[];
+}
+
+async function getRevenueItemForAudit(supabase: SupabaseServerClient, organizationId: string, eventId: string, id: string) {
+  const { data } = await supabase
+    .from("revenue_items")
+    .select("*")
+    .eq("id", id)
+    .eq("event_id", eventId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  return data as AuditRow | null;
+}
+
+async function getTicketTierForAudit(supabase: SupabaseServerClient, organizationId: string, eventId: string, id: string) {
+  const { data } = await supabase
+    .from("ticket_tiers")
+    .select("*")
+    .eq("id", id)
+    .eq("event_id", eventId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  return data as AuditRow | null;
+}
+
+async function getSettlementForAudit(supabase: SupabaseServerClient, organizationId: string, eventId: string) {
+  const { data } = await supabase
+    .from("settlements")
+    .select("*")
+    .eq("event_id", eventId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  return data as AuditRow | null;
+}
+
+async function getMemberForAudit(supabase: SupabaseServerClient, organizationId: string, memberId: string) {
+  const { data } = await supabase
+    .from("organization_members")
+    .select("id, profile_id, role, status, must_change_password, invited_at, deactivated_at, profiles!organization_members_profile_id_fkey(full_name, email)")
+    .eq("id", memberId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (!data) return null;
+  const profile = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
+
+  return {
+    id: data.id,
+    profile_id: data.profile_id,
+    role: data.role,
+    status: data.status,
+    must_change_password: data.must_change_password,
+    invited_at: data.invited_at,
+    deactivated_at: data.deactivated_at,
+    full_name: profile?.full_name ?? null,
+    email: profile?.email ?? null,
+  };
+}
+
+function summarizeEvent(row: AuditRow) {
+  return pickAuditFields(row, ["id", "name", "starts_on", "ends_on", "status", "capacity", "venue_id", "notes"]);
+}
+
+function summarizeBudgetItem(row: AuditRow) {
+  return pickAuditFields(row, ["id", "event_id", "cost_type", "category", "description", "estimated_amount", "actual_amount", "status", "vendor_contact_id", "due_date", "paid_date", "notes"]);
+}
+
+function summarizeRevenueItem(row: AuditRow) {
+  return pickAuditFields(row, ["id", "event_id", "source", "description", "projected_amount", "actual_amount", "status", "notes"]);
+}
+
+function summarizeTicketTier(row: AuditRow) {
+  return pickAuditFields(row, ["id", "event_id", "name", "price", "capacity", "sold_quantity", "comp_quantity", "projected_gross", "generated_gross", "notes"]);
+}
+
+function summarizeSettlement(row: AuditRow) {
+  return pickAuditFields(row, ["id", "event_id", "partner_split_type", "partner_a_name", "partner_b_name", "partner_a_percent", "partner_b_percent", "notes"]);
+}
+
+function pickAuditFields(row: AuditRow, fields: string[]) {
+  return Object.fromEntries(fields.map((field) => [field, row[field] ?? null]));
 }
 
 export async function createDemoEvent() {
@@ -553,7 +844,8 @@ export async function updateEvent(formData: FormData) {
 
   const supabase = await createClient();
   const { id, ...values } = parsed.data;
-  const { error } = await supabase
+  const before = await getEventForAudit(supabase, profile.organization_id, id);
+  const { data, error } = await supabase
     .from("events")
     .update({
       ...values,
@@ -562,11 +854,25 @@ export async function updateEvent(formData: FormData) {
       notes: values.notes || null,
     })
     .eq("id", id)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .select("*")
+    .single();
 
   if (error) {
     redirect(`/dashboard/events/${id}?error=${encodeURIComponent(error.message)}`);
   }
+
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "event",
+    entityId: id,
+    action: "event.updated",
+    summary: `Updated event "${data.name}".`,
+    beforeData: before ? summarizeEvent(before) : null,
+    afterData: summarizeEvent(data),
+    metadata: { event_id: id },
+  });
 
   revalidatePath(`/dashboard/events/${id}`);
   revalidatePath("/dashboard/events");
@@ -577,6 +883,7 @@ export async function deleteEvent(formData: FormData) {
   const profile = await requireCanDeleteRecords();
   const id = String(formData.get("id") ?? "");
   const supabase = await createClient();
+  const before = await getEventForAudit(supabase, profile.organization_id, id);
   const { error } = await supabase
     .from("events")
     .delete()
@@ -586,6 +893,17 @@ export async function deleteEvent(formData: FormData) {
   if (error) {
     redirect(`/dashboard/events/${id}?error=${encodeURIComponent(error.message)}`);
   }
+
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "event",
+    entityId: id,
+    action: "event.deleted",
+    summary: `Deleted event "${before?.name ?? id}".`,
+    beforeData: before ? summarizeEvent(before) : null,
+    metadata: { event_id: id },
+  });
 
   revalidatePath("/dashboard/events");
   redirect("/dashboard/events");
@@ -651,6 +969,24 @@ export async function inviteUser(formData: FormData) {
     redirect(`/dashboard/settings/team?error=${encodeURIComponent(memberError.message)}`);
   }
 
+  await logAuditEvent({
+    organizationId: membership.organization_id,
+    actorProfile: membership,
+    entityType: "team_member",
+    entityId: authUser.user.id,
+    action: "team_member.invited",
+    summary: `Invited ${parsed.data.email} as ${parsed.data.role}.`,
+    afterData: {
+      profile_id: authUser.user.id,
+      email: parsed.data.email,
+      full_name: parsed.data.full_name,
+      role: parsed.data.role,
+      status: "active",
+      must_change_password: true,
+    },
+    metadata: { invited_profile_id: authUser.user.id },
+  });
+
   revalidatePath("/dashboard/settings/team");
   redirect(`/dashboard/settings/team?success=${encodeURIComponent(`Invited ${parsed.data.email}. Share the temporary password directly.`)}`);
 }
@@ -678,6 +1014,7 @@ export async function updateMemberRole(formData: FormData) {
     // Admins may promote non-owner users to Admin in this alpha.
   }
 
+  const before = await getMemberForAudit(supabase, membership.organization_id, parsed.data.member_id);
   const { error } = await supabase
     .from("organization_members")
     .update({ role: parsed.data.role })
@@ -693,6 +1030,19 @@ export async function updateMemberRole(formData: FormData) {
     .update({ role: parsed.data.role })
     .eq("id", target.profile_id)
     .eq("organization_id", membership.organization_id);
+
+  const after = await getMemberForAudit(supabase, membership.organization_id, parsed.data.member_id);
+  await logAuditEvent({
+    organizationId: membership.organization_id,
+    actorProfile: membership,
+    entityType: "team_member",
+    entityId: target.profile_id,
+    action: "team_member.role_changed",
+    summary: `Changed ${after?.email ?? target.profile_id} role from ${target.role} to ${parsed.data.role}.`,
+    beforeData: before,
+    afterData: after,
+    metadata: { member_id: parsed.data.member_id, target_profile_id: target.profile_id },
+  });
 
   revalidatePath("/dashboard/settings/team");
   redirect("/dashboard/settings/team?success=Role updated");
@@ -727,6 +1077,18 @@ export async function forceMemberPasswordChange(formData: FormData) {
     redirect(`/dashboard/settings/team?error=${encodeURIComponent(error.message)}`);
   }
 
+  const after = await getMemberForAudit(supabase, membership.organization_id, parsed.data.member_id);
+  await logAuditEvent({
+    organizationId: membership.organization_id,
+    actorProfile: membership,
+    entityType: "team_member",
+    entityId: target.profile_id,
+    action: "team_member.password_change_required",
+    summary: `Required password change for ${after?.email ?? target.profile_id}.`,
+    afterData: after,
+    metadata: { member_id: parsed.data.member_id, target_profile_id: target.profile_id },
+  });
+
   revalidatePath("/dashboard/settings/team");
   redirect("/dashboard/settings/team?success=Password change required on next login");
 }
@@ -758,6 +1120,7 @@ export async function removeMember(formData: FormData) {
     }
   }
 
+  const before = await getMemberForAudit(supabase, membership.organization_id, parsed.data.member_id);
   const { error } = await supabase
     .from("organization_members")
     .update({
@@ -771,6 +1134,19 @@ export async function removeMember(formData: FormData) {
   if (error) {
     redirect(`/dashboard/settings/team?error=${encodeURIComponent(error.message)}`);
   }
+
+  const after = await getMemberForAudit(supabase, membership.organization_id, parsed.data.member_id);
+  await logAuditEvent({
+    organizationId: membership.organization_id,
+    actorProfile: membership,
+    entityType: "team_member",
+    entityId: target.profile_id,
+    action: "team_member.removed",
+    summary: `Removed ${before?.email ?? target.profile_id} from the organization.`,
+    beforeData: before,
+    afterData: after,
+    metadata: { member_id: parsed.data.member_id, target_profile_id: target.profile_id },
+  });
 
   revalidatePath("/dashboard/settings/team");
   redirect("/dashboard/settings/team?success=Member removed");
@@ -801,6 +1177,16 @@ export async function changePassword(formData: FormData) {
   if (memberError) {
     redirect(`/change-password?error=${encodeURIComponent(memberError.message)}`);
   }
+
+  await logAuditEvent({
+    organizationId: membership.organization_id,
+    actorProfile: membership,
+    entityType: "team_member",
+    entityId: membership.profile_id,
+    action: "team_member.password_changed",
+    summary: "Changed password after temporary-password requirement.",
+    metadata: { member_id: membership.id, target_profile_id: membership.profile_id },
+  });
 
   revalidatePath("/dashboard", "layout");
   redirect("/dashboard");

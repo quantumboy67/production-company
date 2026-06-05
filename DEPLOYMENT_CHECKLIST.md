@@ -4,7 +4,9 @@
 
 - [ ] Create Supabase project.
 - [ ] Enable Email/Password auth.
-- [ ] Apply all migrations in `supabase/migrations` in order, including Access Control Alpha.
+- [ ] Apply all migrations in `supabase/migrations` in order, including Access Control Alpha and Audit Trail Alpha.
+- [ ] Confirm `public.audit_log` exists and RLS is enabled.
+- [ ] Confirm authenticated users can select only active-organization audit rows and cannot directly insert/update/delete audit rows.
 - [ ] Confirm RLS is enabled on all public app tables.
 - [ ] Confirm existing onboarded users were backfilled into `organization_members` as active Owners.
 - [ ] Confirm private Storage bucket `event-documents` exists.
@@ -33,6 +35,7 @@
 - [ ] Deploy preview.
 - [ ] If beta testers should access the deployment directly, disable Vercel Deployment Protection for the beta environment or distribute an approved Vercel share/bypass link.
 - [ ] Smoke test preview URL.
+- [ ] In the deployed app, make one event or budget change and confirm the event `Activity` tab shows the audit row.
 - [ ] Promote to production when preview is clean.
 
 ## Preflight Commands

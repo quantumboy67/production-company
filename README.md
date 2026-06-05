@@ -31,6 +31,7 @@ The migration creates:
 - Default budget categories and task templates
 - Sample event data for `Cedric Burnside @ Fairweather`
 - Access Control Alpha membership roles and RLS policies
+- Audit Trail Alpha `audit_log` table, indexes, and append-only RLS posture
 
 ## First User And Organization
 
@@ -171,6 +172,7 @@ Implemented first:
 - Invite-only Team management for Owner/Admin users
 - Forced password change for temporary-password users
 - Viewer read-only restrictions and Producer event/financial editing permissions
+- Event Activity tab backed by append-only audit logs for event, financial, settlement, and team access changes
 
 Scaffolded for next phases:
 
@@ -181,3 +183,22 @@ Scaffolded for next phases:
 - Contracts / Files
 - Sponsorships
 - Settings
+
+## Audit Trail Alpha
+
+Audit Trail Alpha records important logged-in user activity in `public.audit_log`.
+
+Currently audited:
+
+- event create, update, delete
+- budget item create, update, delete, and batch update
+- revenue item create, update, delete
+- ticket tier create, update, delete
+- settlement update
+- team member invite, role change, removal, forced password change, and completed password change
+
+Audit rows include actor context, action, summary, before/after JSON where useful, and metadata such as related `event_id`.
+
+The audit trail intentionally does not log temporary passwords, password contents, auth tokens, service-role keys, or raw secret values. Normal app users can read audit rows for their active organization, but cannot directly insert, update, or delete audit rows. Inserts are performed by trusted server-side actions only.
+
+Event-level audit rows are visible in the event detail `Activity` tab. In Alpha, Viewer, Producer, Admin, and Owner users who can access the event can view its Activity tab as read-only.

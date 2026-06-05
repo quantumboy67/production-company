@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteEvent } from "@/app/actions";
+import { ActivityList } from "@/components/app/activity-list";
 import { EventFinancialTabs } from "@/components/app/event-financial-tabs";
 import { EventForm } from "@/components/app/event-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { listEventActivity } from "@/lib/data/audit";
 import { getEvent, getEventFinancials } from "@/lib/data/events";
 import { prettyDate, titleize } from "@/lib/format";
 import { canDeleteRecords, canEditFinancials, canManageEvents, getProfile } from "@/lib/supabase/auth";
@@ -14,6 +16,7 @@ const tabs = [
   ["overview", "Overview"],
   ["budget", "Budget"],
   ["revenue", "Revenue & Settlement"],
+  ["activity", "Activity"],
 ] as const;
 
 export default async function EventDetailPage({
@@ -26,14 +29,20 @@ export default async function EventDetailPage({
   const { id } = await params;
   const { tab = "overview", error } = await searchParams;
 
-  const [eventResult, financialsResult, profileResult] = await Promise.allSettled([getEvent(id), getEventFinancials(id), getProfile()]);
+  const [eventResult, financialsResult, profileResult, activityResult] = await Promise.allSettled([
+    getEvent(id),
+    getEventFinancials(id),
+    getProfile(),
+    listEventActivity(id),
+  ]);
 
-  if (eventResult.status === "rejected" || financialsResult.status === "rejected" || profileResult.status === "rejected") {
+  if (eventResult.status === "rejected" || financialsResult.status === "rejected" || profileResult.status === "rejected" || activityResult.status === "rejected") {
     notFound();
   }
 
   const event = eventResult.value;
   const financials = financialsResult.value;
+  const activity = activityResult.value;
   const role = profileResult.value.membership.role;
   const canEditEvent = canManageEvents(role);
   const canDeleteEvent = canDeleteRecords(role);
@@ -83,6 +92,8 @@ export default async function EventDetailPage({
             </CardContent>
           </Card>
         </div>
+      ) : activeTab === "activity" ? (
+        <ActivityList activity={activity} />
       ) : (
         <EventFinancialTabs
           activeTab={activeTab}

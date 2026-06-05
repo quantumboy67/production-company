@@ -33,6 +33,25 @@
 - [ ] Owner removes/deactivates the test user and the removed user loses dashboard/org access.
 - [ ] Confirm `SUPABASE_SERVICE_ROLE_KEY` is server-only and never appears in browser code or console output.
 
+## Audit Trail Alpha
+
+- [ ] Apply the Audit Trail Alpha migration and confirm `public.audit_log` exists.
+- [ ] Confirm active organization members can read audit logs for their organization.
+- [ ] Confirm normal authenticated clients cannot directly insert, update, or delete audit logs.
+- [ ] Open an event detail page and confirm the `Activity` tab appears.
+- [ ] Owner updates an event title/date and confirms an `event.updated` row appears in Activity.
+- [ ] Owner adds, edits, and deletes a budget item and confirms audit rows appear.
+- [ ] Owner uses Budget Save All and confirms one `budget_items.batch_updated` row appears.
+- [ ] Owner adds, edits, and deletes a revenue item and confirms audit rows appear.
+- [ ] Owner adds, edits, and deletes a ticket tier and confirms audit rows appear.
+- [ ] Owner updates settlement notes and confirms a `settlement.updated` row appears.
+- [ ] Owner invites a user and confirms `team_member.invited` is logged.
+- [ ] Owner changes a user role and confirms `team_member.role_changed` is logged.
+- [ ] Owner removes a user and confirms `team_member.removed` is logged.
+- [ ] Temporary password change completion logs `team_member.password_changed`.
+- [ ] Confirm no passwords, temporary passwords, service keys, auth tokens, or secrets appear in audit details.
+- [ ] Confirm Viewer can see event Activity read-only but still cannot mutate financials.
+
 ## Dashboard
 
 - [ ] Confirm dashboard loads after sign-in.
@@ -101,7 +120,7 @@
 
 - [ ] Confirm live beta URL access does not unexpectedly require Vercel login, or document the Vercel share/protection flow for testers.
 - [ ] Confirm primary navigation shows only Dashboard and Events.
-- [ ] Confirm event detail tabs show only Overview, Budget, and Revenue & Settlement.
+- [ ] Confirm event detail tabs show Overview, Budget, Revenue & Settlement, and Activity.
 - [ ] Confirm approved Juniper Berry logo and favicon are visible after deployment.
 - [ ] Confirm existing demo/QA settlement partner names display as Juniper Berry Production Company.
 - [ ] Confirm dashboard financial labels match event settlement terminology.
