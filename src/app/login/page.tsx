@@ -33,7 +33,7 @@ export default async function LoginPage({
               {error === "profile" ? "Your user needs a profile assigned to an organization." : error}
             </p>
           ) : null}
-          <form action={signIn} className="space-y-4">
+          <form action={signIn} className="space-y-4" data-testid="login-form">
             <div>
               <Label htmlFor="email">Email</Label>
               <Input id="email" name="email" type="email" autoComplete="email" required />

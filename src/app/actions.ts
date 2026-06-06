@@ -293,7 +293,7 @@ export async function createBudgetItem(formData: FormData) {
     metadata: { event_id: parsed.data.event_id },
   });
   revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
-  redirect(`/dashboard/events/${parsed.data.event_id}?tab=budget`);
+  redirect(`/dashboard/events/${parsed.data.event_id}?tab=budget&highlight_budget_item=${data.id}`);
 }
 
 export async function updateBudgetItem(formData: FormData) {

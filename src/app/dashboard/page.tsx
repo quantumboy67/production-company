@@ -27,7 +27,7 @@ export default async function DashboardPage({
   const [events, profile] = await Promise.all([listDashboardEvents(), getProfile()]);
   const canCreateEvents = canManageEvents(profile.membership.role);
   const today = toIsoDate(new Date());
-  const currentMonth = parseMonth(month) ?? today.slice(0, 7);
+  const currentMonth = parseMonth(month) ?? (isIsoDate(date) ? date.slice(0, 7) : today.slice(0, 7));
   const selectedDate = isIsoDate(date) ? date : getDefaultSelectedDate(currentMonth, today);
   const calendarDays = buildCalendarDays(currentMonth);
   const eventsByDate = groupEventsByDate(events);
@@ -43,9 +43,13 @@ export default async function DashboardPage({
     <div className="space-y-6">
       <style>{`
         @media print {
+          @page { margin: 0.5in; }
           aside, .print-hidden, .print\\:hidden { display: none !important; }
+          html, body { background: white !important; color: black !important; }
           main { padding: 0 !important; }
           .print-card { border: 0 !important; box-shadow: none !important; }
+          .print-table { min-width: 0 !important; font-size: 10px !important; }
+          .print-table th, .print-table td { padding: 4px 6px 4px 0 !important; }
           a { color: inherit !important; text-decoration: none !important; }
         }
       `}</style>
@@ -88,11 +92,13 @@ export default async function DashboardPage({
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] print:hidden">
-        <Card>
+        <Card data-testid="dashboard-calendar">
           <CardHeader className="flex flex-row items-center justify-between gap-3">
             <div>
-              <CardTitle>{formatMonthLabel(currentMonth)}</CardTitle>
-              <p className="text-sm text-muted-foreground">Click a date to review events.</p>
+              <CardTitle>Viewing {formatMonthLabel(currentMonth)}</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Selected date: {prettyDate(selectedDate)}. Click any date to review its events.
+              </p>
             </div>
             <div className="flex gap-2">
               <Button asChild variant="outline" size="sm">
@@ -157,7 +163,7 @@ export default async function DashboardPage({
           <div className="flex gap-2">
             <Button asChild variant="outline">
               <Link href={dashboardHref({ month: currentMonth, date: selectedDate, upcoming: showUpcoming ? undefined : "1" })}>
-                {showUpcoming ? "Hide upcoming events" : "Show all upcoming events"}
+                {showUpcoming ? "Hide upcoming events list" : "View upcoming events list"}
               </Link>
             </Button>
             {showUpcoming ? <PrintButton label="Print list" /> : null}
@@ -215,10 +221,10 @@ function SelectedDatePanel({
   canCreateEvents: boolean;
 }) {
   return (
-    <Card>
+    <Card data-testid="selected-date-event-panel">
       <CardHeader>
-        <CardTitle>{prettyDate(date)}</CardTitle>
-        <p className="text-sm text-muted-foreground">Events on selected date</p>
+        <CardTitle>Selected date: {prettyDate(date)}</CardTitle>
+        <p className="text-sm text-muted-foreground">Events scheduled for this date</p>
       </CardHeader>
       <CardContent className="space-y-3">
         {events.length === 0 ? (
@@ -250,13 +256,16 @@ function UpcomingEventsTable({ events }: { events: DashboardEvent[] }) {
     <Card className="print-card">
       <CardHeader>
         <CardTitle>Upcoming event financials</CardTitle>
+        <p className="text-sm text-muted-foreground print:block hidden">
+          Juniper Berry Production Company - upcoming event financials
+        </p>
       </CardHeader>
       <CardContent>
         {events.length === 0 ? (
           <p className="rounded-md border p-4 text-sm text-muted-foreground">No upcoming events.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-sm">
+            <table className="print-table w-full min-w-[960px] text-left text-sm">
               <thead className="border-b text-xs text-muted-foreground">
                 <tr>
                   <th className="py-2 pr-3 font-medium">Date</th>

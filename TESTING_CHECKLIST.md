@@ -80,15 +80,19 @@
 - [ ] Click the Cedric event date and confirm the selected-date panel lists the event.
 - [ ] Click the event from the selected-date panel and confirm it opens event detail.
 - [ ] Click `Add event on this date` and confirm the New Event form prefills the selected start date.
-- [ ] Click `Show all upcoming events` and confirm the financial list appears.
+- [ ] Confirm selected date/month context is clear in the calendar and selected-date panel.
+- [ ] Click `View upcoming events list` and confirm the financial list appears.
 - [ ] Confirm the upcoming list includes projected revenue, estimated expenses, projected net, actual / entered revenue, actual / paid expenses, and actual / entered net.
 - [ ] Confirm the print button is visible when the upcoming list is open.
+- [ ] Confirm print preview excludes sidebar/nav clutter and keeps upcoming event rows readable.
 - [ ] If an organization is empty, click `Create demo event` and confirm demo data appears.
 
 ## Event CRUD
 
 - [ ] Create a new event.
 - [ ] Edit event name, date, status, capacity, and notes.
+- [ ] Confirm Admin/Owner sees an event delete confirmation before deletion.
+- [ ] Confirm Producer/Viewer cannot see event delete controls.
 - [ ] Delete the test event.
 - [ ] Confirm event pages do not show events from another organization.
 
@@ -98,7 +102,10 @@
 - [ ] Confirm hard costs and soft costs render separately.
 - [ ] Confirm the headliner guarantee is `$10,000`.
 - [ ] Confirm support act line exists for `The Sugar Thieves`.
+- [ ] Confirm budget rows are easy to scan by category, description, estimate, actual/paid, status, and notes.
 - [ ] Add, edit, batch-save, discard, and delete budget rows.
+- [ ] Confirm unsaved Budget Save All edits warn before switching event tabs.
+- [ ] Add a budget item and confirm the newly added row is briefly highlighted.
 - [ ] Confirm budget delete requires confirmation before removal.
 
 ## Revenue And Ticket Tiers
@@ -135,7 +142,7 @@
 ## Beta Readiness Smoke
 
 - [ ] Confirm live beta URL access does not unexpectedly require Vercel login, or document the Vercel share/protection flow for testers.
-- [ ] Confirm primary navigation shows only Dashboard and Events.
+- [ ] Confirm primary navigation shows Dashboard, Events, My Team, and role-appropriate Settings.
 - [ ] Confirm event detail tabs show Overview, Budget, Revenue & Settlement, and Activity.
 - [ ] Confirm approved Juniper Berry logo and favicon are visible after deployment.
 - [ ] Confirm existing demo/QA settlement partner names display as Juniper Berry Production Company.

@@ -31,7 +31,7 @@ export default async function TeamPage({
   const inactiveMembers = members.filter((member) => member.status !== "active");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="settings-team-page">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Team</h1>
         <p className="text-sm text-muted-foreground">Invite users and manage access for this organization.</p>

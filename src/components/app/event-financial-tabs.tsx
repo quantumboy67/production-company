@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -27,6 +27,7 @@ import type { BudgetItem, ContactOption, RevenueItem, Settlement, TicketTier } f
 type Props = {
   activeTab: string;
   eventId: string;
+  highlightedBudgetItemId: string | null;
   budgetItems: BudgetItem[];
   revenueItems: RevenueItem[];
   ticketTiers: TicketTier[];
@@ -96,6 +97,7 @@ export function EventFinancialTabs(props: Props) {
     drafts: initialBudgetDrafts,
   }));
   const [batchMessage, setBatchMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [highlightedBudgetItemId, setHighlightedBudgetItemId] = useState(props.highlightedBudgetItemId);
   const [isBatchPending, startBatchTransition] = useTransition();
   const budgetDrafts = budgetDraftState.sourceKey === budgetSourceKey ? budgetDraftState.drafts : initialBudgetDrafts;
 
@@ -115,6 +117,40 @@ export function EventFinancialTabs(props: Props) {
   const hardCosts = budgetDrafts.filter((item) => item.cost_type === "hard");
   const softCosts = budgetDrafts.filter((item) => item.cost_type === "soft");
   const dirtyCount = dirtyDrafts.length;
+
+  useEffect(() => {
+    if (!props.highlightedBudgetItemId) return;
+
+    const timeout = window.setTimeout(() => {
+      setHighlightedBudgetItemId(null);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("highlight_budget_item");
+      const query = url.searchParams.toString();
+      router.replace(query ? `${url.pathname}?${query}` : url.pathname, { scroll: false });
+    }, 4500);
+
+    return () => window.clearTimeout(timeout);
+  }, [props.highlightedBudgetItemId, router]);
+
+  useEffect(() => {
+    if (dirtyCount === 0) return;
+
+    function handleTabClick(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const link = target.closest("a[data-event-tab-link]");
+      if (!link) return;
+
+      const shouldLeave = window.confirm("You have unsaved budget changes. Save or discard them before switching tabs?");
+      if (!shouldLeave) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+
+    document.addEventListener("click", handleTabClick, true);
+    return () => document.removeEventListener("click", handleTabClick, true);
+  }, [dirtyCount]);
 
   function updateBudgetDraft(id: string, values: Partial<BudgetDraft>) {
     setBatchMessage(null);
@@ -155,7 +191,7 @@ export function EventFinancialTabs(props: Props) {
   return (
     <div className="space-y-4">
       {activeTab === "budget" ? (
-        <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
+        <div className="grid gap-4 xl:grid-cols-[1fr_340px]" data-testid="budget-tab">
           <div className="space-y-4">
             <BetaFocusNote text="Budget tracks estimated costs, actual/paid amounts, vendor status, and settlement-ready totals." />
             {props.canEditFinancials ? (
@@ -179,6 +215,7 @@ export function EventFinancialTabs(props: Props) {
               items={hardCosts}
               contacts={props.contacts}
               dirtyIds={new Set(dirtyDrafts.map((draft) => draft.id))}
+              highlightedId={highlightedBudgetItemId}
               hasUnsavedChanges={dirtyCount > 0}
               canEdit={props.canEditFinancials}
               canDelete={props.canDeleteFinancials}
@@ -190,6 +227,7 @@ export function EventFinancialTabs(props: Props) {
               items={softCosts}
               contacts={props.contacts}
               dirtyIds={new Set(dirtyDrafts.map((draft) => draft.id))}
+              highlightedId={highlightedBudgetItemId}
               hasUnsavedChanges={dirtyCount > 0}
               canEdit={props.canEditFinancials}
               canDelete={props.canDeleteFinancials}
@@ -199,7 +237,7 @@ export function EventFinancialTabs(props: Props) {
           <CostSummary items={displayBudgetItems} />
         </div>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+        <div className="grid gap-4 xl:grid-cols-[1fr_360px]" data-testid="revenue-tab">
           <div className="space-y-4">
             <BetaFocusNote text="Revenue & Settlement tracks ticket tiers, non-ticket income, projected gross, actual gross, and partner splits." />
             {props.canEditFinancials ? (
@@ -348,6 +386,7 @@ function BudgetList({
   items,
   contacts,
   dirtyIds,
+  highlightedId,
   hasUnsavedChanges,
   canEdit,
   canDelete,
@@ -358,6 +397,7 @@ function BudgetList({
   items: BudgetDraft[];
   contacts: ContactOption[];
   dirtyIds: Set<string>;
+  highlightedId: string | null;
   hasUnsavedChanges: boolean;
   canEdit: boolean;
   canDelete: boolean;
@@ -376,8 +416,28 @@ function BudgetList({
           <p className="rounded-md border p-4 text-sm text-muted-foreground">No budget items yet.</p>
         ) : (
           items.map((item) => (
-            <div key={item.id} className="rounded-md border p-3">
-              <form action={updateBudgetItem} className="grid gap-3 md:grid-cols-6">
+            <div
+              key={item.id}
+              data-budget-item-id={item.id}
+              className={[
+                "rounded-md border p-4 transition-colors",
+                highlightedId === item.id ? "border-primary bg-primary/10" : "bg-card",
+                dirtyIds.has(item.id) ? "ring-1 ring-primary/40" : "",
+              ].join(" ")}
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+                <div>
+                  <p className="font-medium">{item.description || "Untitled budget item"}</p>
+                  <p className="text-xs text-muted-foreground">{item.category} / {titleize(item.status)}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span className="rounded-md border bg-muted/20 px-2 py-1">Est. {money(Number(item.estimated_amount || 0))}</span>
+                  <span className="rounded-md border bg-muted/20 px-2 py-1">
+                    Actual {item.actual_amount === "" ? "blank" : money(Number(item.actual_amount || 0))}
+                  </span>
+                </div>
+              </div>
+              <form action={updateBudgetItem} className="grid gap-4 md:grid-cols-6">
                 <input type="hidden" name="id" value={item.id} />
                 <input type="hidden" name="event_id" value={eventId} />
                 <Field label="Cost type">
@@ -399,7 +459,7 @@ function BudgetList({
                     onChange={(event) => onChange(item.id, { category: event.target.value })}
                   />
                 </Field>
-                <Field label="Description" className="md:col-span-2">
+                <Field label="Description" className="md:col-span-3">
                   <Input
                     name="description"
                     value={item.description}
@@ -468,7 +528,7 @@ function BudgetList({
                     onChange={(event) => onChange(item.id, { paid_date: event.target.value })}
                   />
                 </Field>
-                <Field label="Notes" className="md:col-span-2">
+                <Field label="Notes" className="md:col-span-4">
                   <Input
                     name="notes"
                     value={item.notes}
@@ -527,10 +587,16 @@ function BudgetBatchToolbar({
         </div>
         {dirtyCount > 0 ? (
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={onDiscard} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onDiscard}
+              disabled={isPending}
+              data-testid="budget-discard-changes"
+            >
               Discard changes
             </Button>
-            <Button type="button" onClick={onSave} disabled={isPending}>
+            <Button type="button" onClick={onSave} disabled={isPending} data-testid="budget-save-all">
               {isPending ? "Saving..." : "Save all changes"}
             </Button>
           </div>
@@ -749,7 +815,7 @@ function SettlementCard({
           <Field label="Notes">
             <Textarea name="notes" defaultValue={settlement?.notes ?? ""} disabled={!canEdit} />
           </Field>
-          {canEdit ? <Button type="submit" variant="secondary">Save settlement</Button> : null}
+          {canEdit ? <Button type="submit" variant="secondary" data-testid="settlement-save">Save settlement</Button> : null}
         </form>
       </CardContent>
     </Card>
@@ -828,6 +894,7 @@ function DeleteButton({
             aria-modal="true"
             className="w-full max-w-md rounded-md border bg-background p-5 shadow-lg"
             role="dialog"
+            data-testid="budget-delete-confirm-dialog"
           >
             <div className="space-y-2">
               <h2 className="text-lg font-semibold">{title}</h2>

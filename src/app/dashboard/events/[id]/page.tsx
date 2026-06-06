@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { deleteEvent } from "@/app/actions";
 import { ActivityList } from "@/components/app/activity-list";
+import { EventDeleteForm } from "@/components/app/event-delete-form";
 import { EventFinancialTabs } from "@/components/app/event-financial-tabs";
 import { EventForm } from "@/components/app/event-form";
 import { Badge } from "@/components/ui/badge";
@@ -24,10 +24,10 @@ export default async function EventDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; error?: string }>;
+  searchParams: Promise<{ tab?: string; error?: string; highlight_budget_item?: string }>;
 }) {
   const { id } = await params;
-  const { tab = "overview", error } = await searchParams;
+  const { tab = "overview", error, highlight_budget_item } = await searchParams;
 
   const [eventResult, financialsResult, profileResult, activityResult] = await Promise.allSettled([
     getEvent(id),
@@ -62,18 +62,13 @@ export default async function EventDetailPage({
             {prettyDate(event.starts_on)}{event.ends_on ? ` - ${prettyDate(event.ends_on)}` : ""} at {event.venues?.name ?? "TBD venue"}
           </p>
         </div>
-        {canDeleteEvent ? (
-          <form action={deleteEvent}>
-            <input type="hidden" name="id" value={event.id} />
-            <Button type="submit" variant="destructive">Delete</Button>
-          </form>
-        ) : null}
+        {canDeleteEvent ? <EventDeleteForm eventId={event.id} eventName={event.name} /> : null}
       </div>
 
-      <div className="flex gap-2 overflow-x-auto border-b pb-2">
+      <div className="flex gap-2 overflow-x-auto border-b pb-2" data-testid="event-detail-tabs">
         {tabs.map(([value, label]) => (
           <Button key={value} asChild variant={activeTab === value ? "secondary" : "ghost"} size="sm">
-            <Link href={`/dashboard/events/${event.id}?tab=${value}`}>{label}</Link>
+            <Link href={`/dashboard/events/${event.id}?tab=${value}`} data-event-tab-link="true">{label}</Link>
           </Button>
         ))}
       </div>
@@ -98,6 +93,7 @@ export default async function EventDetailPage({
         <EventFinancialTabs
           activeTab={activeTab}
           eventId={event.id}
+          highlightedBudgetItemId={highlight_budget_item ?? null}
           canEditFinancials={canEditEventFinancials}
           canDeleteFinancials={canDeleteEventFinancials}
           {...financials}

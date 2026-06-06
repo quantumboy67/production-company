@@ -23,7 +23,7 @@ export function TeamInviteForm() {
 
   return (
     <div className="space-y-4">
-      <form action={inviteUser} className="grid gap-3 md:grid-cols-6">
+      <form action={inviteUser} className="grid gap-3 md:grid-cols-6" data-testid="invite-user-form">
         <Field label="Email" className="md:col-span-2">
           <Input name="email" type="email" required />
         </Field>

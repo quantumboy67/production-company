@@ -5,7 +5,7 @@ import type { AuditLogRecord } from "@/lib/types";
 
 export function ActivityList({ activity }: { activity: AuditLogRecord[] }) {
   return (
-    <Card>
+    <Card data-testid="activity-tab">
       <CardHeader>
         <CardTitle>Activity</CardTitle>
         <p className="text-sm text-muted-foreground">
