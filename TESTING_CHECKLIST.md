@@ -15,6 +15,10 @@
 ## Access Control Alpha
 
 - [ ] Apply the Access Control Alpha migration and confirm the existing dummy QA user is an active Owner.
+- [ ] Confirm active members can access `/dashboard/team`.
+- [ ] Confirm Owner/Admin sees the My Team `Manage team` link to Settings > Team.
+- [ ] Confirm Viewer/Producer can view My Team but do not see management controls.
+- [ ] Confirm removed/disabled users cannot access My Team.
 - [ ] Confirm Owner can access Settings > Team.
 - [ ] Owner invites a Viewer with a temporary password.
 - [ ] Viewer logs in and is redirected to `/change-password`.

@@ -14,7 +14,7 @@ Future modules should not weaken organization scoping, role checks, RLS, or audi
 
 1. Access Control Alpha
 2. Audit Trail Alpha
-3. My Team / My Contacts
+3. My Team Alpha
 4. Receipts & Invoices
 5. My Auditor
 6. Venue Maps / TicketLeap CSV Import later
@@ -23,15 +23,17 @@ Future modules should not weaken organization scoping, role checks, RLS, or audi
 
 ### My Team
 
-My Team will become the people-facing view for Juniper Berry members and production collaborators. It should show who is directly associated with the production company, their roles, and production responsibilities.
+My Team is now a functional alpha directory for Juniper Berry members and production collaborators. It shows people directly associated with the production company, their roles, membership status, invited dates, and basic account readiness.
 
 This is separate from Settings -> Team. Settings -> Team remains the admin and user management area for invite-only access control.
+
+My Team is read-oriented. Owners/Admins can link from My Team to Settings -> Team when they need invite, role-change, password reset, or removal controls.
 
 ### My Contacts
 
 My Contacts will become the broader CRM-style contact database for artists, agents, managers, tour managers, venues, sponsors, media, vendors, security, hospitality, hotels, restaurants, photographers, engineers, insurance, city/permit contacts, and co-promoters.
 
-My Team members should automatically appear in My Contacts later, but the CRM should remain broader than internal membership.
+My Contacts remains future CRM work. My Team members should automatically appear in My Contacts later, but the CRM should remain broader than internal membership.
 
 Future contact fields may include name, company, role/title, email, phone, website, socials, birthday, important dates, notes, relationship type, tags, last contacted, next follow-up, event history, and reminder/tickler fields.
 

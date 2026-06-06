@@ -9,10 +9,10 @@ import type { OrganizationRole } from "@/lib/types";
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/events", label: "Events", icon: Music2 },
+  { href: "/dashboard/team", label: "My Team", icon: Users },
 ];
 
 const comingSoonItems = [
-  { label: "My Team", icon: Users },
   { label: "My Contacts", icon: Contact },
   { label: "Receipts & Invoices", icon: ReceiptText },
   { label: "My Auditor", icon: ClipboardCheck },
