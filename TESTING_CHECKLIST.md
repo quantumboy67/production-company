@@ -37,6 +37,18 @@
 - [ ] Owner removes/deactivates the test user and the removed user loses dashboard/org access.
 - [ ] Confirm `SUPABASE_SERVICE_ROLE_KEY` is server-only and never appears in browser code or console output.
 
+## Team & Access-Control Polish
+
+- [ ] Confirm Settings > Team shows active members first.
+- [ ] Confirm removed/disabled members are hidden in a collapsed inactive section by default.
+- [ ] Confirm inactive member rows are read-only and do not show role-change, password-reset, or remove controls.
+- [ ] Select Admin in the invite form and confirm the Admin access warning appears.
+- [ ] Confirm Admin invites require the warning checkbox.
+- [ ] Confirm invite success copy shows email, role, private temporary-password guidance, and first-login password-change guidance.
+- [ ] Confirm Viewer financial tabs show view-only messaging and no active edit/delete controls.
+- [ ] Confirm Producer financial tabs allow editing but explain that only Admins/Owners can delete financial records.
+- [ ] Confirm invite, role-change, force-reset, and removal actions still create audit events.
+
 ## Audit Trail Alpha
 
 - [ ] Apply the Audit Trail Alpha migration and confirm `public.audit_log` exists.

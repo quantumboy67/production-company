@@ -161,8 +161,11 @@ export function EventFinancialTabs(props: Props) {
             {props.canEditFinancials ? (
               <BudgetItemForm eventId={props.eventId} contacts={props.contacts} />
             ) : (
-              <ReadOnlyNotice label="Your role has read-only access to budget items." />
+              <ReadOnlyNotice label="You have view-only access. Budget items are visible, but editing is disabled for your role." />
             )}
+            {props.canEditFinancials && !props.canDeleteFinancials ? (
+              <PermissionNotice label="Only Admins and Owners can delete financial records." />
+            ) : null}
             {props.canEditFinancials ? <BudgetBatchToolbar
               dirtyCount={dirtyCount}
               isPending={isBatchPending}
@@ -205,8 +208,11 @@ export function EventFinancialTabs(props: Props) {
                 <RevenueItemForm eventId={props.eventId} />
               </>
             ) : (
-              <ReadOnlyNotice label="Your role has read-only access to revenue, ticket tiers, and settlement." />
+              <ReadOnlyNotice label="You have view-only access. Revenue, ticket tiers, and settlement are visible, but editing is disabled for your role." />
             )}
+            {props.canEditFinancials && !props.canDeleteFinancials ? (
+              <PermissionNotice label="Only Admins and Owners can delete financial records." />
+            ) : null}
             <TicketTierList
               eventId={props.eventId}
               ticketTiers={props.ticketTiers}
@@ -240,6 +246,14 @@ function BetaFocusNote({ text }: { text: string }) {
 function ReadOnlyNotice({ label }: { label: string }) {
   return (
     <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+      {label}
+    </div>
+  );
+}
+
+function PermissionNotice({ label }: { label: string }) {
+  return (
+    <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
       {label}
     </div>
   );

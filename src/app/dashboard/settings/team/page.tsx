@@ -1,17 +1,15 @@
 import {
   forceMemberPasswordChange,
-  inviteUser,
   removeMember,
   updateMemberRole,
 } from "@/app/actions";
 import { redirect } from "next/navigation";
+import { TeamInviteForm } from "@/components/app/team-invite-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { listTeamMembers } from "@/lib/data/team";
+import { listTeamMembers, type TeamMember } from "@/lib/data/team";
 import { prettyDate, titleize } from "@/lib/format";
 import { canManageUsers, getProfile } from "@/lib/supabase/auth";
 
@@ -29,6 +27,8 @@ export default async function TeamPage({
   }
 
   const [members, params] = await Promise.all([listTeamMembers(), searchParams]);
+  const activeMembers = members.filter((member) => member.status === "active");
+  const inactiveMembers = members.filter((member) => member.status !== "active");
 
   return (
     <div className="space-y-6">
@@ -53,101 +53,119 @@ export default async function TeamPage({
           <CardTitle>Invite User</CardTitle>
         </CardHeader>
         <CardContent>
-          <form action={inviteUser} className="grid gap-3 md:grid-cols-6">
-            <Field label="Email" className="md:col-span-2">
-              <Input name="email" type="email" required />
-            </Field>
-            <Field label="Full name" className="md:col-span-2">
-              <Input name="full_name" required />
-            </Field>
-            <Field label="Role">
-              <select name="role" defaultValue="viewer" className="h-9 w-full rounded-md border bg-background px-3 text-sm">
-                {inviteRoles.map((role) => <option key={role} value={role}>{titleize(role)}</option>)}
-              </select>
-            </Field>
-            <Field label="Temporary password">
-              <Input name="temporary_password" type="password" required />
-            </Field>
-            <div className="md:col-span-6">
-              <Button type="submit">Invite user</Button>
-            </div>
-          </form>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Email is not sent automatically yet. Share the username and temporary password directly.
-          </p>
+          <TeamInviteForm />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Members</CardTitle>
+          <CardTitle>Active Members</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <THead>
-              <TR>
-                <TH>Name</TH>
-                <TH>Email</TH>
-                <TH>Role</TH>
-                <TH>Status</TH>
-                <TH>Password</TH>
-                <TH>Invited</TH>
-                <TH className="text-right">Actions</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {members.map((member) => (
-                <TR key={member.id}>
-                  <TD className="font-medium">{member.profiles?.full_name ?? "Unnamed user"}</TD>
-                  <TD>{member.profiles?.email ?? member.profile_id}</TD>
-                  <TD><Badge>{titleize(member.role)}</Badge></TD>
-                  <TD><Badge>{titleize(member.status)}</Badge></TD>
-                  <TD>{member.must_change_password ? "Required" : "Current"}</TD>
-                  <TD>{member.invited_at ? prettyDate(member.invited_at.slice(0, 10)) : "Unknown"}</TD>
-                  <TD>
-                    <div className="flex flex-wrap justify-end gap-2">
-                      {member.role === "owner" ? null : (
-                        <form action={updateMemberRole} className="flex gap-2">
-                          <input type="hidden" name="member_id" value={member.id} />
-                          <select name="role" defaultValue={member.role} className="h-8 rounded-md border bg-background px-2 text-xs">
-                            {inviteRoles.map((role) => <option key={role} value={role}>{titleize(role)}</option>)}
-                          </select>
-                          <Button type="submit" variant="secondary" size="sm">Save role</Button>
-                        </form>
-                      )}
-                      <form action={forceMemberPasswordChange}>
-                        <input type="hidden" name="member_id" value={member.id} />
-                        <Button type="submit" variant="outline" size="sm">Force reset</Button>
-                      </form>
-                      <form action={removeMember}>
-                        <input type="hidden" name="member_id" value={member.id} />
-                        <Button type="submit" variant="destructive" size="sm">Remove</Button>
-                      </form>
-                    </div>
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
+          {activeMembers.length > 0 ? (
+            <MembersTable members={activeMembers} showActions />
+          ) : (
+            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+              No active members yet.
+            </p>
+          )}
         </CardContent>
       </Card>
+
+      {inactiveMembers.length > 0 ? (
+        <details className="rounded-lg border bg-card text-card-foreground shadow-sm">
+          <summary className="cursor-pointer px-5 py-4 text-base font-semibold">
+            Show inactive members ({inactiveMembers.length})
+          </summary>
+          <div className="space-y-3 px-5 pb-5">
+            <p className="text-sm text-muted-foreground">
+              Removed and disabled members are shown for reference only. Reactivate by inviting the user again.
+            </p>
+            <MembersTable members={inactiveMembers} showActions={false} showDeactivatedAt />
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
 
-function Field({
-  label,
-  className,
-  children,
+function MembersTable({
+  members,
+  showActions,
+  showDeactivatedAt = false,
 }: {
-  label: string;
-  className?: string;
-  children: React.ReactNode;
+  members: TeamMember[];
+  showActions: boolean;
+  showDeactivatedAt?: boolean;
 }) {
   return (
-    <div className={className}>
-      <Label className="mb-1 block text-xs text-muted-foreground">{label}</Label>
-      {children}
+    <Table>
+      <THead>
+        <TR>
+          <TH>Name</TH>
+          <TH>Email</TH>
+          <TH>Role</TH>
+          <TH>Status</TH>
+          <TH>Password</TH>
+          <TH>Invited</TH>
+          {showDeactivatedAt ? <TH>Deactivated</TH> : null}
+          <TH className="text-right">Actions</TH>
+        </TR>
+      </THead>
+      <TBody>
+        {members.map((member) => (
+          <TR key={member.id}>
+            <TD className="font-medium">{member.profiles?.full_name ?? "Unnamed user"}</TD>
+            <TD>{member.profiles?.email ?? member.profile_id}</TD>
+            <TD><Badge>{titleize(member.role)}</Badge></TD>
+            <TD><Badge>{titleize(member.status)}</Badge></TD>
+            <TD>{member.must_change_password ? "Required" : "Current"}</TD>
+            <TD>{member.invited_at ? prettyDate(member.invited_at.slice(0, 10)) : "Unknown"}</TD>
+            {showDeactivatedAt ? (
+              <TD>{member.deactivated_at ? prettyDate(member.deactivated_at.slice(0, 10)) : "Unknown"}</TD>
+            ) : null}
+            <TD>
+              {showActions ? (
+                <MemberActions member={member} />
+              ) : (
+                <p className="text-right text-xs text-muted-foreground">Read-only</p>
+              )}
+            </TD>
+          </TR>
+        ))}
+      </TBody>
+    </Table>
+  );
+}
+
+function MemberActions({ member }: { member: TeamMember }) {
+  if (member.status !== "active") {
+    return <p className="text-right text-xs text-muted-foreground">Read-only</p>;
+  }
+
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      {member.role === "owner" ? null : (
+        <form action={updateMemberRole} className="flex gap-2">
+          <input type="hidden" name="member_id" value={member.id} />
+          <select name="role" defaultValue={member.role} className="h-8 rounded-md border bg-background px-2 text-xs">
+            {inviteRoles.map((role) => <option key={role} value={role}>{titleize(role)}</option>)}
+          </select>
+          <Button type="submit" variant="secondary" size="sm">Save role</Button>
+        </form>
+      )}
+      <form action={forceMemberPasswordChange}>
+        <input type="hidden" name="member_id" value={member.id} />
+        <Button type="submit" variant="outline" size="sm">Force reset</Button>
+      </form>
+      {member.role === "owner" ? (
+        <span className="self-center text-xs text-muted-foreground">Owner protected</span>
+      ) : (
+        <form action={removeMember}>
+          <input type="hidden" name="member_id" value={member.id} />
+          <Button type="submit" variant="destructive" size="sm">Remove</Button>
+        </form>
+      )}
     </div>
   );
 }

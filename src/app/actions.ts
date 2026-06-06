@@ -108,6 +108,7 @@ const inviteUserSchema = z.object({
   full_name: z.string().trim().min(2, "Full name is required"),
   role: z.enum(["admin", "producer", "viewer"]),
   temporary_password: z.string().min(10, "Temporary password must be at least 10 characters"),
+  confirm_admin: z.string().optional(),
 });
 
 const memberIdSchema = z.object({
@@ -917,6 +918,12 @@ export async function inviteUser(formData: FormData) {
     redirect(`/dashboard/settings/team?error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid invite")}`);
   }
 
+  if (parsed.data.role === "admin" && parsed.data.confirm_admin !== "true") {
+    redirect(
+      `/dashboard/settings/team?error=${encodeURIComponent("Confirm Admin access before inviting an Admin user.")}`,
+    );
+  }
+
   const supabase = await createClient();
   const admin = createAdminClient();
   const { data: authUser, error: authError } = await admin.auth.admin.createUser({
@@ -988,7 +995,11 @@ export async function inviteUser(formData: FormData) {
   });
 
   revalidatePath("/dashboard/settings/team");
-  redirect(`/dashboard/settings/team?success=${encodeURIComponent(`Invited ${parsed.data.email}. Share the temporary password directly.`)}`);
+  redirect(
+    `/dashboard/settings/team?success=${encodeURIComponent(
+      `Invited ${parsed.data.email} as ${parsed.data.role}. Send the temporary password privately. The user will be required to create a new password on first login.`,
+    )}`,
+  );
 }
 
 export async function updateMemberRole(formData: FormData) {
