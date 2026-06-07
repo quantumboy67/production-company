@@ -115,6 +115,22 @@ const memberIdSchema = z.object({
   member_id: z.string().uuid(),
 });
 
+const removeMemberSchema = memberIdSchema.extend({
+  confirm_intent: z.literal("remove_member"),
+});
+
+const destructiveActionSchema = z.object({
+  id: z.string().uuid(),
+  event_id: z.string().uuid().optional(),
+  confirm_intent: z.literal("archive"),
+  delete_reason: z.string().trim().max(500).optional(),
+});
+
+const restoreActionSchema = z.object({
+  id: z.string().uuid(),
+  event_id: z.string().uuid().optional(),
+});
+
 const updateMemberRoleSchema = memberIdSchema.extend({
   role: z.enum(["admin", "producer", "viewer"]),
 });
@@ -316,6 +332,7 @@ export async function updateBudgetItem(formData: FormData) {
     .eq("id", id)
     .eq("event_id", values.event_id)
     .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
     .select("*")
     .single();
 
@@ -428,18 +445,34 @@ export async function updateBudgetItemsBatch(formData: FormData) {
 
 export async function deleteBudgetItem(formData: FormData) {
   const profile = await requireCanDeleteRecords();
-  const id = String(formData.get("id") ?? "");
-  const eventId = String(formData.get("event_id") ?? "");
+  const parsed = destructiveActionSchema.required({ event_id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "budget", "Archive confirmation is required.");
+
+  const id = parsed.data.id;
+  const eventId = parsed.data.event_id;
   const supabase = await createClient();
 
   await requireEventAccess(supabase, profile.organization_id, eventId);
   const before = await getBudgetItemForAudit(supabase, profile.organization_id, eventId, id);
-  const { error } = await supabase
+  if (!before || before.deleted_at) redirectToFinancialError(eventId, "budget", "Budget item was not found or is already archived.");
+
+  const archivedAt = new Date().toISOString();
+  const { data, error } = await supabase
     .from("budget_items")
-    .delete()
+    .update({
+      deleted_at: archivedAt,
+      deleted_by: profile.profile_id,
+      delete_reason: parsed.data.delete_reason || null,
+      restored_at: null,
+      restored_by: null,
+    })
     .eq("id", id)
     .eq("event_id", eventId)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(eventId, "budget", error.message);
   await logAuditEvent({
@@ -448,8 +481,53 @@ export async function deleteBudgetItem(formData: FormData) {
     entityType: "budget_item",
     entityId: id,
     action: "budget_item.deleted",
-    summary: `Deleted budget item "${before?.description ?? id}".`,
+    summary: `Archived budget item "${before.description ?? id}".`,
     beforeData: before ? summarizeBudgetItem(before) : null,
+    afterData: summarizeBudgetItem(data),
+    metadata: { event_id: eventId, delete_reason: parsed.data.delete_reason || null },
+  });
+  revalidatePath(`/dashboard/events/${eventId}`);
+  redirect(`/dashboard/events/${eventId}?tab=budget`);
+}
+
+export async function restoreBudgetItem(formData: FormData) {
+  const profile = await requireCanDeleteRecords();
+  const parsed = restoreActionSchema.required({ event_id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "budget", "Invalid restore request.");
+
+  const { id, event_id: eventId } = parsed.data;
+  const supabase = await createClient();
+
+  await requireEventAccess(supabase, profile.organization_id, eventId);
+  const before = await getBudgetItemForAudit(supabase, profile.organization_id, eventId, id);
+  if (!before?.deleted_at) redirectToFinancialError(eventId, "budget", "Budget item is not archived.");
+
+  const { data, error } = await supabase
+    .from("budget_items")
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      restored_at: new Date().toISOString(),
+      restored_by: profile.profile_id,
+    })
+    .eq("id", id)
+    .eq("event_id", eventId)
+    .eq("organization_id", profile.organization_id)
+    .not("deleted_at", "is", null)
+    .select("*")
+    .single();
+
+  if (error) redirectToFinancialError(eventId, "budget", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "budget_item",
+    entityId: id,
+    action: "budget_item.restored",
+    summary: `Restored budget item "${data.description ?? id}".`,
+    beforeData: before ? summarizeBudgetItem(before) : null,
+    afterData: summarizeBudgetItem(data),
     metadata: { event_id: eventId },
   });
   revalidatePath(`/dashboard/events/${eventId}`);
@@ -508,6 +586,7 @@ export async function updateRevenueItem(formData: FormData) {
     .eq("id", id)
     .eq("event_id", values.event_id)
     .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
     .select("*")
     .single();
 
@@ -529,18 +608,33 @@ export async function updateRevenueItem(formData: FormData) {
 
 export async function deleteRevenueItem(formData: FormData) {
   const profile = await requireCanDeleteRecords();
-  const id = String(formData.get("id") ?? "");
-  const eventId = String(formData.get("event_id") ?? "");
+  const parsed = destructiveActionSchema.required({ event_id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", "Archive confirmation is required.");
+
+  const id = parsed.data.id;
+  const eventId = parsed.data.event_id;
   const supabase = await createClient();
 
   await requireEventAccess(supabase, profile.organization_id, eventId);
   const before = await getRevenueItemForAudit(supabase, profile.organization_id, eventId, id);
-  const { error } = await supabase
+  if (!before || before.deleted_at) redirectToFinancialError(eventId, "revenue", "Revenue item was not found or is already archived.");
+
+  const { data, error } = await supabase
     .from("revenue_items")
-    .delete()
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: profile.profile_id,
+      delete_reason: parsed.data.delete_reason || null,
+      restored_at: null,
+      restored_by: null,
+    })
     .eq("id", id)
     .eq("event_id", eventId)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(eventId, "revenue", error.message);
   await logAuditEvent({
@@ -549,8 +643,53 @@ export async function deleteRevenueItem(formData: FormData) {
     entityType: "revenue_item",
     entityId: id,
     action: "revenue_item.deleted",
-    summary: `Deleted revenue item "${before?.description ?? id}".`,
+    summary: `Archived revenue item "${before.description ?? id}".`,
     beforeData: before ? summarizeRevenueItem(before) : null,
+    afterData: summarizeRevenueItem(data),
+    metadata: { event_id: eventId, delete_reason: parsed.data.delete_reason || null },
+  });
+  revalidatePath(`/dashboard/events/${eventId}`);
+  redirect(`/dashboard/events/${eventId}?tab=revenue`);
+}
+
+export async function restoreRevenueItem(formData: FormData) {
+  const profile = await requireCanDeleteRecords();
+  const parsed = restoreActionSchema.required({ event_id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", "Invalid restore request.");
+
+  const { id, event_id: eventId } = parsed.data;
+  const supabase = await createClient();
+
+  await requireEventAccess(supabase, profile.organization_id, eventId);
+  const before = await getRevenueItemForAudit(supabase, profile.organization_id, eventId, id);
+  if (!before?.deleted_at) redirectToFinancialError(eventId, "revenue", "Revenue item is not archived.");
+
+  const { data, error } = await supabase
+    .from("revenue_items")
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      restored_at: new Date().toISOString(),
+      restored_by: profile.profile_id,
+    })
+    .eq("id", id)
+    .eq("event_id", eventId)
+    .eq("organization_id", profile.organization_id)
+    .not("deleted_at", "is", null)
+    .select("*")
+    .single();
+
+  if (error) redirectToFinancialError(eventId, "revenue", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "revenue_item",
+    entityId: id,
+    action: "revenue_item.restored",
+    summary: `Restored revenue item "${data.description ?? id}".`,
+    beforeData: before ? summarizeRevenueItem(before) : null,
+    afterData: summarizeRevenueItem(data),
     metadata: { event_id: eventId },
   });
   revalidatePath(`/dashboard/events/${eventId}`);
@@ -609,6 +748,7 @@ export async function updateTicketTier(formData: FormData) {
     .eq("id", id)
     .eq("event_id", values.event_id)
     .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
     .select("*")
     .single();
 
@@ -630,18 +770,33 @@ export async function updateTicketTier(formData: FormData) {
 
 export async function deleteTicketTier(formData: FormData) {
   const profile = await requireCanDeleteRecords();
-  const id = String(formData.get("id") ?? "");
-  const eventId = String(formData.get("event_id") ?? "");
+  const parsed = destructiveActionSchema.required({ event_id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", "Archive confirmation is required.");
+
+  const id = parsed.data.id;
+  const eventId = parsed.data.event_id;
   const supabase = await createClient();
 
   await requireEventAccess(supabase, profile.organization_id, eventId);
   const before = await getTicketTierForAudit(supabase, profile.organization_id, eventId, id);
-  const { error } = await supabase
+  if (!before || before.deleted_at) redirectToFinancialError(eventId, "revenue", "Ticket tier was not found or is already archived.");
+
+  const { data, error } = await supabase
     .from("ticket_tiers")
-    .delete()
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: profile.profile_id,
+      delete_reason: parsed.data.delete_reason || null,
+      restored_at: null,
+      restored_by: null,
+    })
     .eq("id", id)
     .eq("event_id", eventId)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
+    .select("*")
+    .single();
 
   if (error) redirectToFinancialError(eventId, "revenue", error.message);
   await logAuditEvent({
@@ -650,8 +805,53 @@ export async function deleteTicketTier(formData: FormData) {
     entityType: "ticket_tier",
     entityId: id,
     action: "ticket_tier.deleted",
-    summary: `Deleted ticket tier "${before?.name ?? id}".`,
+    summary: `Archived ticket tier "${before.name ?? id}".`,
     beforeData: before ? summarizeTicketTier(before) : null,
+    afterData: summarizeTicketTier(data),
+    metadata: { event_id: eventId, delete_reason: parsed.data.delete_reason || null },
+  });
+  revalidatePath(`/dashboard/events/${eventId}`);
+  redirect(`/dashboard/events/${eventId}?tab=revenue`);
+}
+
+export async function restoreTicketTier(formData: FormData) {
+  const profile = await requireCanDeleteRecords();
+  const parsed = restoreActionSchema.required({ event_id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) redirectToFinancialError(String(formData.get("event_id") ?? ""), "revenue", "Invalid restore request.");
+
+  const { id, event_id: eventId } = parsed.data;
+  const supabase = await createClient();
+
+  await requireEventAccess(supabase, profile.organization_id, eventId);
+  const before = await getTicketTierForAudit(supabase, profile.organization_id, eventId, id);
+  if (!before?.deleted_at) redirectToFinancialError(eventId, "revenue", "Ticket tier is not archived.");
+
+  const { data, error } = await supabase
+    .from("ticket_tiers")
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      restored_at: new Date().toISOString(),
+      restored_by: profile.profile_id,
+    })
+    .eq("id", id)
+    .eq("event_id", eventId)
+    .eq("organization_id", profile.organization_id)
+    .not("deleted_at", "is", null)
+    .select("*")
+    .single();
+
+  if (error) redirectToFinancialError(eventId, "revenue", error.message);
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "ticket_tier",
+    entityId: id,
+    action: "ticket_tier.restored",
+    summary: `Restored ticket tier "${data.name ?? id}".`,
+    beforeData: before ? summarizeTicketTier(before) : null,
+    afterData: summarizeTicketTier(data),
     metadata: { event_id: eventId },
   });
   revalidatePath(`/dashboard/events/${eventId}`);
@@ -799,19 +999,19 @@ async function getMemberForAudit(supabase: SupabaseServerClient, organizationId:
 }
 
 function summarizeEvent(row: AuditRow) {
-  return pickAuditFields(row, ["id", "name", "starts_on", "ends_on", "status", "capacity", "venue_id", "notes"]);
+  return pickAuditFields(row, ["id", "name", "starts_on", "ends_on", "status", "capacity", "venue_id", "notes", "deleted_at", "deleted_by", "delete_reason", "restored_at", "restored_by"]);
 }
 
 function summarizeBudgetItem(row: AuditRow) {
-  return pickAuditFields(row, ["id", "event_id", "cost_type", "category", "description", "estimated_amount", "actual_amount", "status", "vendor_contact_id", "due_date", "paid_date", "notes"]);
+  return pickAuditFields(row, ["id", "event_id", "cost_type", "category", "description", "estimated_amount", "actual_amount", "status", "vendor_contact_id", "due_date", "paid_date", "notes", "deleted_at", "deleted_by", "delete_reason", "restored_at", "restored_by"]);
 }
 
 function summarizeRevenueItem(row: AuditRow) {
-  return pickAuditFields(row, ["id", "event_id", "source", "description", "projected_amount", "actual_amount", "status", "notes"]);
+  return pickAuditFields(row, ["id", "event_id", "source", "description", "projected_amount", "actual_amount", "status", "notes", "deleted_at", "deleted_by", "delete_reason", "restored_at", "restored_by"]);
 }
 
 function summarizeTicketTier(row: AuditRow) {
-  return pickAuditFields(row, ["id", "event_id", "name", "price", "capacity", "sold_quantity", "comp_quantity", "projected_gross", "generated_gross", "notes"]);
+  return pickAuditFields(row, ["id", "event_id", "name", "price", "capacity", "sold_quantity", "comp_quantity", "projected_gross", "generated_gross", "notes", "deleted_at", "deleted_by", "delete_reason", "restored_at", "restored_by"]);
 }
 
 function summarizeSettlement(row: AuditRow) {
@@ -856,6 +1056,7 @@ export async function updateEvent(formData: FormData) {
     })
     .eq("id", id)
     .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
     .select("*")
     .single();
 
@@ -882,14 +1083,33 @@ export async function updateEvent(formData: FormData) {
 
 export async function deleteEvent(formData: FormData) {
   const profile = await requireCanDeleteRecords();
-  const id = String(formData.get("id") ?? "");
+  const parsed = destructiveActionSchema.omit({ event_id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    redirect("/dashboard/events?error=Archive confirmation is required.");
+  }
+
+  const id = parsed.data.id;
   const supabase = await createClient();
   const before = await getEventForAudit(supabase, profile.organization_id, id);
-  const { error } = await supabase
+  if (!before || before.deleted_at) {
+    redirect(`/dashboard/events/${id}?error=Event was not found or is already archived.`);
+  }
+
+  const { data, error } = await supabase
     .from("events")
-    .delete()
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: profile.profile_id,
+      delete_reason: parsed.data.delete_reason || null,
+      restored_at: null,
+      restored_by: null,
+    })
     .eq("id", id)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
+    .select("*")
+    .single();
 
   if (error) {
     redirect(`/dashboard/events/${id}?error=${encodeURIComponent(error.message)}`);
@@ -901,13 +1121,65 @@ export async function deleteEvent(formData: FormData) {
     entityType: "event",
     entityId: id,
     action: "event.deleted",
-    summary: `Deleted event "${before?.name ?? id}".`,
+    summary: `Archived event "${before.name ?? id}".`,
     beforeData: before ? summarizeEvent(before) : null,
+    afterData: summarizeEvent(data),
+    metadata: { event_id: id, delete_reason: parsed.data.delete_reason || null },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/events");
+  redirect("/dashboard/events");
+}
+
+export async function restoreEvent(formData: FormData) {
+  const profile = await requireCanDeleteRecords();
+  const parsed = restoreActionSchema.omit({ event_id: true }).safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    redirect("/dashboard/events?error=Invalid restore request.");
+  }
+
+  const id = parsed.data.id;
+  const supabase = await createClient();
+  const before = await getEventForAudit(supabase, profile.organization_id, id);
+  if (!before?.deleted_at) {
+    redirect("/dashboard/events?error=Event is not archived.");
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      restored_at: new Date().toISOString(),
+      restored_by: profile.profile_id,
+    })
+    .eq("id", id)
+    .eq("organization_id", profile.organization_id)
+    .not("deleted_at", "is", null)
+    .select("*")
+    .single();
+
+  if (error) {
+    redirect(`/dashboard/events?error=${encodeURIComponent(error.message)}`);
+  }
+
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "event",
+    entityId: id,
+    action: "event.restored",
+    summary: `Restored event "${data.name ?? id}".`,
+    beforeData: before ? summarizeEvent(before) : null,
+    afterData: summarizeEvent(data),
     metadata: { event_id: id },
   });
 
+  revalidatePath("/dashboard");
   revalidatePath("/dashboard/events");
-  redirect("/dashboard/events");
+  redirect(`/dashboard/events/${id}`);
 }
 
 export async function inviteUser(formData: FormData) {
@@ -1106,10 +1378,10 @@ export async function forceMemberPasswordChange(formData: FormData) {
 
 export async function removeMember(formData: FormData) {
   const membership = await requireCanManageUsers();
-  const parsed = memberIdSchema.safeParse(Object.fromEntries(formData));
+  const parsed = removeMemberSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
-    redirect("/dashboard/settings/team?error=Invalid member");
+    redirect("/dashboard/settings/team?error=Remove confirmation is required.");
   }
 
   const supabase = await createClient();
@@ -1213,6 +1485,7 @@ async function requireEventAccess(
     .select("id")
     .eq("id", eventId)
     .eq("organization_id", organizationId)
+    .is("deleted_at", null)
     .single();
 
   if (error || !data) {
@@ -1251,6 +1524,7 @@ async function requireBudgetItemsAccess(
     .select("id")
     .eq("event_id", eventId)
     .eq("organization_id", organizationId)
+    .is("deleted_at", null)
     .in("id", uniqueIds);
 
   if (error) {

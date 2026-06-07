@@ -7,6 +7,9 @@
 - [ ] Apply all migrations in `supabase/migrations` in order, including Access Control Alpha and Audit Trail Alpha.
 - [ ] Confirm `public.audit_log` exists and RLS is enabled.
 - [ ] Confirm authenticated users can select only active-organization audit rows and cannot directly insert/update/delete audit rows.
+- [ ] Apply `202606070900_deletion_safety_restore_alpha.sql` before verifying deletion safety in production.
+- [ ] Smoke test archive/restore for one event, one budget item, one revenue item, and one ticket tier as Owner/Admin.
+- [ ] Confirm Producer/Viewer accounts cannot see destructive controls after deployment.
 - [ ] Confirm RLS is enabled on all public app tables.
 - [ ] Confirm existing onboarded users were backfilled into `organization_members` as active Owners.
 - [ ] Confirm private Storage bucket `event-documents` exists.

@@ -1,9 +1,9 @@
 import {
   forceMemberPasswordChange,
-  removeMember,
   updateMemberRole,
 } from "@/app/actions";
 import { redirect } from "next/navigation";
+import { MemberRemoveForm } from "@/components/app/member-remove-form";
 import { TeamInviteForm } from "@/components/app/team-invite-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -161,10 +161,7 @@ function MemberActions({ member }: { member: TeamMember }) {
       {member.role === "owner" ? (
         <span className="self-center text-xs text-muted-foreground">Owner protected</span>
       ) : (
-        <form action={removeMember}>
-          <input type="hidden" name="member_id" value={member.id} />
-          <Button type="submit" variant="destructive" size="sm">Remove</Button>
-        </form>
+        <MemberRemoveForm memberId={member.id} label={member.profiles?.email ?? member.profile_id} />
       )}
     </div>
   );

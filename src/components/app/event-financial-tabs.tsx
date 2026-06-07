@@ -10,6 +10,9 @@ import {
   deleteBudgetItem,
   deleteRevenueItem,
   deleteTicketTier,
+  restoreBudgetItem,
+  restoreRevenueItem,
+  restoreTicketTier,
   updateBudgetItemsBatch,
   updateBudgetItem,
   updateRevenueItem,
@@ -29,8 +32,11 @@ type Props = {
   eventId: string;
   highlightedBudgetItemId: string | null;
   budgetItems: BudgetItem[];
+  archivedBudgetItems: BudgetItem[];
   revenueItems: RevenueItem[];
+  archivedRevenueItems: RevenueItem[];
   ticketTiers: TicketTier[];
+  archivedTicketTiers: TicketTier[];
   settlement: Settlement | null;
   contacts: ContactOption[];
   canEditFinancials: boolean;
@@ -233,6 +239,9 @@ export function EventFinancialTabs(props: Props) {
               canDelete={props.canDeleteFinancials}
               onChange={updateBudgetDraft}
             />
+            {props.canDeleteFinancials ? (
+              <ArchivedBudgetList eventId={props.eventId} items={props.archivedBudgetItems} />
+            ) : null}
           </div>
           <CostSummary items={displayBudgetItems} />
         </div>
@@ -263,6 +272,13 @@ export function EventFinancialTabs(props: Props) {
               canEdit={props.canEditFinancials}
               canDelete={props.canDeleteFinancials}
             />
+            {props.canDeleteFinancials ? (
+              <ArchivedRevenueList
+                eventId={props.eventId}
+                revenueItems={props.archivedRevenueItems}
+                ticketTiers={props.archivedTicketTiers}
+              />
+            ) : null}
           </div>
           <div className="space-y-4">
             <SettlementCard eventId={props.eventId} totals={totals} settlement={props.settlement} canEdit={props.canEditFinancials} />
@@ -541,8 +557,8 @@ function BudgetList({
                   {canDelete ? (
                     <DeleteButton
                       action={deleteBudgetItem}
-                      title="Delete budget item?"
-                      description={`This will remove "${item.description}" from this event budget. This cannot be undone.`}
+                      title="Archive budget item?"
+                      description={`This will archive "${item.description}" and remove it from active views. It can be restored by an Admin or Owner.`}
                       disabled={hasUnsavedChanges}
                       disabledMessage="Save or discard budget changes before deleting."
                     />
@@ -652,7 +668,7 @@ function TicketTierList({
           <p className="rounded-md border p-4 text-sm text-muted-foreground">No ticket tiers yet.</p>
         ) : (
           ticketTiers.map((tier) => (
-            <div key={tier.id} className="rounded-md border p-3">
+            <div key={tier.id} className="rounded-md border p-3" data-testid={`ticket-tier-row-${tier.id}`}>
               <form action={updateTicketTier} className="grid gap-3 md:grid-cols-6">
                 <input type="hidden" name="id" value={tier.id} />
                 <input type="hidden" name="event_id" value={eventId} />
@@ -669,8 +685,13 @@ function TicketTierList({
                   {canDelete ? (
                     <DeleteButton
                       action={deleteTicketTier}
-                      title="Delete ticket tier?"
-                      description={`This will remove "${tier.name}" from this event's ticket tiers. This cannot be undone.`}
+                      title="Archive ticket tier?"
+                      description={`This will archive "${tier.name}" and remove it from active views. It can be restored by an Admin or Owner.`}
+                      openTestId={`ticket-tier-archive-open-${tier.id}`}
+                      dialogTestId="ticket-tier-archive-confirm-dialog"
+                      confirmTestId={`ticket-tier-archive-confirm-${tier.id}`}
+                      cancelTestId={`ticket-tier-archive-cancel-${tier.id}`}
+                      label={`Archive ticket tier ${tier.name}`}
                     />
                   ) : null}
                 </div>
@@ -734,7 +755,7 @@ function RevenueList({
           <p className="rounded-md border p-4 text-sm text-muted-foreground">No revenue items yet.</p>
         ) : (
           revenueItems.map((item) => (
-            <div key={item.id} className="rounded-md border p-3">
+            <div key={item.id} className="rounded-md border p-3" data-testid={`revenue-item-row-${item.id}`}>
               <form action={updateRevenueItem} className="grid gap-3 md:grid-cols-6">
                 <input type="hidden" name="id" value={item.id} />
                 <input type="hidden" name="event_id" value={eventId} />
@@ -757,8 +778,13 @@ function RevenueList({
                   {canDelete ? (
                     <DeleteButton
                       action={deleteRevenueItem}
-                      title="Delete revenue item?"
-                      description={`This will remove "${item.description}" from this event revenue. This cannot be undone.`}
+                      title="Archive revenue item?"
+                      description={`This will archive "${item.description}" and remove it from active views. It can be restored by an Admin or Owner.`}
+                      openTestId={`revenue-item-archive-open-${item.id}`}
+                      dialogTestId="revenue-item-archive-confirm-dialog"
+                      confirmTestId={`revenue-item-archive-confirm-${item.id}`}
+                      cancelTestId={`revenue-item-archive-cancel-${item.id}`}
+                      label={`Archive revenue item ${item.description}`}
                     />
                   ) : null}
                 </div>
@@ -768,6 +794,118 @@ function RevenueList({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ArchivedBudgetList({ eventId, items }: { eventId: string; items: BudgetItem[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Archived budget items</CardTitle>
+        <p className="mt-1 text-xs text-muted-foreground">Admin/Owner restore area. Archived rows are excluded from active totals.</p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {items.length === 0 ? (
+          <p className="rounded-md border p-4 text-sm text-muted-foreground">No archived budget items.</p>
+        ) : (
+          items.map((item) => (
+            <ArchivedRow
+              key={item.id}
+              eventId={eventId}
+              id={item.id}
+              kind="budget-item"
+              title={item.description}
+              detail={`${item.category} / ${titleize(item.status)} / ${money(Number(item.actual_amount ?? item.estimated_amount ?? 0))}`}
+              reason={item.delete_reason}
+              restoredAction={restoreBudgetItem}
+            />
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ArchivedRevenueList({
+  eventId,
+  revenueItems,
+  ticketTiers,
+}: {
+  eventId: string;
+  revenueItems: RevenueItem[];
+  ticketTiers: TicketTier[];
+}) {
+  const hasArchived = revenueItems.length > 0 || ticketTiers.length > 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Archived revenue records</CardTitle>
+        <p className="mt-1 text-xs text-muted-foreground">Admin/Owner restore area. Archived rows are excluded from active totals.</p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!hasArchived ? (
+          <p className="rounded-md border p-4 text-sm text-muted-foreground">No archived revenue items or ticket tiers.</p>
+        ) : null}
+        {ticketTiers.map((tier) => (
+          <ArchivedRow
+            key={tier.id}
+            eventId={eventId}
+            id={tier.id}
+            kind="ticket-tier"
+            title={tier.name}
+            detail={`Ticket tier / ${money(Number(tier.generated_gross || tier.projected_gross || 0))}`}
+            reason={tier.delete_reason}
+            restoredAction={restoreTicketTier}
+          />
+        ))}
+        {revenueItems.map((item) => (
+          <ArchivedRow
+            key={item.id}
+            eventId={eventId}
+            id={item.id}
+            kind="revenue-item"
+            title={item.description}
+            detail={`${titleize(item.source)} / ${titleize(item.status)} / ${money(Number(item.actual_amount ?? item.projected_amount ?? 0))}`}
+            reason={item.delete_reason}
+            restoredAction={restoreRevenueItem}
+          />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ArchivedRow({
+  eventId,
+  id,
+  kind,
+  title,
+  detail,
+  reason,
+  restoredAction,
+}: {
+  eventId: string;
+  id: string;
+  kind: string;
+  title: string;
+  detail: string;
+  reason: string | null;
+  restoredAction: (formData: FormData) => Promise<void>;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 p-3 text-sm" data-testid={`archived-${kind}-row-${id}`}>
+      <div>
+        <p className="font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{detail}</p>
+        {reason ? <p className="mt-1 text-xs text-muted-foreground">Reason: {reason}</p> : null}
+      </div>
+      <form action={restoredAction}>
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="event_id" value={eventId} />
+        <Button type="submit" variant="outline" size="sm" data-testid={`restore-${kind}-${id}`} aria-label={`Restore ${title}`}>Restore</Button>
+      </form>
+    </div>
   );
 }
 
@@ -865,12 +1003,22 @@ function DeleteButton({
   description,
   disabled = false,
   disabledMessage,
+  openTestId,
+  dialogTestId = "budget-delete-confirm-dialog",
+  confirmTestId,
+  cancelTestId,
+  label,
 }: {
   action: (formData: FormData) => Promise<void>;
   title: string;
   description: string;
   disabled?: boolean;
   disabledMessage?: string;
+  openTestId?: string;
+  dialogTestId?: string;
+  confirmTestId?: string;
+  cancelTestId?: string;
+  label?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -881,6 +1029,8 @@ function DeleteButton({
         variant="destructive"
         disabled={disabled}
         title={disabled ? disabledMessage : undefined}
+        aria-label={label}
+        data-testid={openTestId}
         onClick={() => setIsOpen(true)}
       >
         Delete
@@ -894,17 +1044,26 @@ function DeleteButton({
             aria-modal="true"
             className="w-full max-w-md rounded-md border bg-background p-5 shadow-lg"
             role="dialog"
-            data-testid="budget-delete-confirm-dialog"
+            data-testid={dialogTestId}
           >
+            <input type="hidden" name="confirm_intent" value="archive" />
             <div className="space-y-2">
               <h2 className="text-lg font-semibold">{title}</h2>
               <p className="text-sm text-muted-foreground">{description}</p>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-muted-foreground">Reason optional</span>
+                <textarea
+                  className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  name="delete_reason"
+                  placeholder="Why is this record being archived?"
+                />
+              </label>
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} data-testid={cancelTestId}>
                 Cancel
               </Button>
-              <DeleteConfirmButton action={action} />
+              <DeleteConfirmButton action={action} testId={confirmTestId} />
             </div>
           </div>
         </div>
@@ -913,12 +1072,12 @@ function DeleteButton({
   );
 }
 
-function DeleteConfirmButton({ action }: { action: (formData: FormData) => Promise<void> }) {
+function DeleteConfirmButton({ action, testId }: { action: (formData: FormData) => Promise<void>; testId?: string }) {
   const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" formAction={action} variant="destructive" disabled={pending}>
-      {pending ? "Deleting..." : "Delete"}
+    <Button type="submit" formAction={action} variant="destructive" disabled={pending} data-testid={testId}>
+      {pending ? "Archiving..." : "Archive"}
     </Button>
   );
 }
@@ -1006,6 +1165,11 @@ function draftToBudgetItem(draft: BudgetDraft): BudgetItem {
     due_date: draft.due_date || null,
     paid_date: draft.paid_date || null,
     notes: draft.notes || null,
+    deleted_at: null,
+    deleted_by: null,
+    delete_reason: null,
+    restored_at: null,
+    restored_by: null,
   };
 }
 

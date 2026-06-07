@@ -32,6 +32,11 @@ export type EventRecord = {
   status: EventStatus;
   capacity: number | null;
   notes: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  delete_reason: string | null;
+  restored_at: string | null;
+  restored_by: string | null;
   venues?: { name: string } | null;
 };
 
@@ -47,6 +52,11 @@ export type BudgetItem = {
   due_date: string | null;
   paid_date: string | null;
   notes: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  delete_reason: string | null;
+  restored_at: string | null;
+  restored_by: string | null;
   contacts?: { name: string } | null;
 };
 
@@ -58,6 +68,11 @@ export type RevenueItem = {
   actual_amount: number | null;
   status: RevenueStatus;
   notes: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  delete_reason: string | null;
+  restored_at: string | null;
+  restored_by: string | null;
 };
 
 export type TicketTier = {
@@ -70,6 +85,11 @@ export type TicketTier = {
   generated_gross: number;
   projected_gross: number;
   notes: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  delete_reason: string | null;
+  restored_at: string | null;
+  restored_by: string | null;
 };
 
 export type Settlement = {

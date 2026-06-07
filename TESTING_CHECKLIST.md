@@ -47,6 +47,15 @@
 - [ ] Confirm invite success copy shows email, role, private temporary-password guidance, and first-login password-change guidance.
 - [ ] Confirm Viewer financial tabs show view-only messaging and no active edit/delete controls.
 - [ ] Confirm Producer financial tabs allow editing but explain that only Admins/Owners can delete financial records.
+- [ ] Confirm deletion now means archive/soft-delete for events, budget items, revenue items, and ticket tiers.
+- [ ] Confirm Admin/Owner delete dialogs name the record, require the archive confirmation payload, and allow an optional reason.
+- [ ] Confirm Owner can archive and restore an event from the Events list with `Include archived`.
+- [ ] Confirm archived events do not appear on the normal dashboard/events views.
+- [ ] Confirm Owner/Admin can archive and restore budget items from the Budget tab archived section.
+- [ ] Confirm Owner/Admin can archive and restore revenue items and ticket tiers from the Revenue / Settlement tab archived section.
+- [ ] Confirm archived financial rows are excluded from active totals and restored rows return to totals.
+- [ ] Confirm Activity labels show archived/restored events for events, budget items, revenue items, and ticket tiers.
+- [ ] Confirm team member removal opens a confirmation dialog before access is removed.
 - [ ] Confirm invite, role-change, force-reset, and removal actions still create audit events.
 
 ## Audit Trail Alpha
