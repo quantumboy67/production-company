@@ -68,6 +68,21 @@
 - [ ] Confirm no passwords, temporary passwords, service keys, auth tokens, or secrets appear in audit details.
 - [ ] Confirm Viewer can see event Activity read-only but still cannot mutate financials.
 
+## Audit Trail Enhancements
+
+- [ ] Confirm Activity summary counts appear for total activity, financial changes, event changes, team/access, and settlement changes.
+- [ ] Update a budget item and confirm the Activity count changes after reload.
+- [ ] Filter Activity by actor and confirm only that actor's audit rows remain.
+- [ ] Filter Activity by action and confirm financial actions can be isolated.
+- [ ] Filter Activity by entity type and confirm budget, revenue, settlement, event, and team rows are distinguishable where present.
+- [ ] Search Activity by budget item summary text and confirm matching rows appear.
+- [ ] Use start/end date filters and confirm the visible Activity list narrows correctly.
+- [ ] Expand before/after details and confirm they are readable.
+- [ ] Confirm details redact sensitive keys such as password, token, secret, service role, and API key.
+- [ ] Export filtered Activity CSV and confirm it includes timestamp, actor, action, entity type, and summary only.
+- [ ] Confirm CSV export does not include full before/after JSON.
+- [ ] Confirm Viewer and Producer Activity visibility follows current event-access policy.
+
 ## Dashboard
 
 - [ ] Confirm dashboard loads after sign-in.
