@@ -16,7 +16,7 @@ Future modules should not weaken organization scoping, role checks, RLS, or audi
 2. Audit Trail Alpha
 3. My Team Alpha
 4. Receipts & Invoices Alpha
-5. My Auditor
+5. My Auditor Alpha
 6. Venue Maps / TicketLeap CSV Import later
 
 ## Future Module Definitions
@@ -43,13 +43,15 @@ Future contact fields may include name, company, role/title, email, phone, websi
 
 Receipts & Invoices Alpha attaches financial documents to budget items using private Supabase Storage and auditable metadata. Documents may be receipts, vendor invoices, quotes, W-9s, certificates of insurance, contracts, and settlement support.
 
-This module touches financial controls because it changes how expenses are supported, marked complete, and reviewed. The alpha keeps scope narrow: upload/download, status, missing receipt/invoice indicators, archive/restore, and audit visibility. OCR, invoice parsing, automated missing-document notifications, and My Auditor review workflows remain future work.
+This module touches financial controls because it changes how expenses are supported, marked complete, and reviewed. The alpha keeps scope narrow: upload/download, status, missing receipt/invoice indicators, archive/restore, and audit visibility. OCR, invoice parsing, and automated missing-document notifications remain future work.
 
 ### My Auditor
 
-My Auditor will become the system review and readiness layer. It should not be built until after Access Control Alpha, Audit Trail Alpha, Receipts & Invoices, and enough structured data exists to review.
+My Auditor Alpha is now the system review and readiness layer for deterministic event financial checks. It reviews active event data, budget items, revenue, ticket tiers, settlement notes, and receipt/invoice document metadata without using AI, background jobs, or auto-fixes.
 
-Future checks may include missing receipts, missing invoices, unpaid invoices, expenses with actuals but no receipt, paid invoices without payment dates, budget items missing vendors, ticket sales/revenue inconsistencies, settlement mismatches, missing contracts, missing W-9s, incomplete event financials, stale follow-ups, overdue tasks, role/access anomalies, imported TicketLeap data that does not reconcile, duplicate contacts, and missing audit trail records.
+The alpha flags missing receipts/invoices, expenses with actuals but no supporting document, unaccepted or rejected documents, negative projected or actual net, unresolved revenue actuals, ticket tiers with capacity and zero sold quantity, incomplete settlement inputs, missing venue details, and archived records that may need review.
+
+Future checks may include unpaid invoices, paid invoices without payment dates, budget items missing vendors, ticket sales/revenue inconsistencies, deeper settlement mismatch detection, missing contracts, missing W-9s, stale follow-ups, overdue tasks, role/access anomalies, imported TicketLeap data that does not reconcile, duplicate contacts, exports, scheduled review, notification digests, and AI-assisted summaries.
 
 ## Financial-Control Dependencies
 

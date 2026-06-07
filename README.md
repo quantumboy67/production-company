@@ -224,7 +224,17 @@ Audited document events:
 
 Audit rows include document names, types, statuses, sizes, and related event/budget item IDs. They do not include file contents, signed URLs, passwords, tokens, temporary passwords, service-role keys, or raw secrets.
 
-This alpha does not include OCR, invoice parsing, missing-document email/SMS notifications, My Auditor workflows, CRM, venue maps, or TicketLeap imports.
+This alpha does not include OCR, invoice parsing, missing-document email/SMS notifications, CRM, venue maps, or TicketLeap imports.
+
+## My Auditor Alpha
+
+My Auditor Alpha is a deterministic, read-only event financial readiness checker. It reviews active events in the user's organization and summarizes completeness issues across event details, budget items, revenue items, ticket tiers, settlements, and receipt/invoice document metadata.
+
+Current checks include missing budget items, estimated expenses without actuals, actual or paid expenses without an active receipt/invoice, documents that need review or are not accepted, rejected documents on active budget items, archived records, negative projected or actual net, projected revenue without actuals, ticket tiers with capacity and zero sold quantity, missing settlement notes, incomplete settlement actuals, missing venues, and close upcoming events still in planning.
+
+Severities are `critical`, `warning`, `info`, and `pass`. My Auditor does not auto-fix records, does not write audit rows for reads, does not use AI, and does not expose records outside the active organization. Owner/Admin/Producer users can view it, and Viewer users can view the same read-only auditor results because the underlying active event and financial records are already read-only for Viewers.
+
+Future versions may add AI review, scheduled checks, exports, notification digests, and deeper reconciliation workflows.
 
 ## Account Activity Tracking Alpha
 

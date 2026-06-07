@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listEventActivity } from "@/lib/data/audit";
+import { listAuditorEvents, type AuditorEventResult } from "@/lib/data/auditor";
 import { getEvent, getEventFinancials } from "@/lib/data/events";
 import { prettyDate, titleize } from "@/lib/format";
 import { canDeleteRecords, canEditFinancials, canManageEvents, getProfile } from "@/lib/supabase/auth";
@@ -29,11 +30,12 @@ export default async function EventDetailPage({
   const { id } = await params;
   const { tab = "overview", error, highlight_budget_item } = await searchParams;
 
-  const [eventResult, financialsResult, profileResult, activityResult] = await Promise.allSettled([
+  const [eventResult, financialsResult, profileResult, activityResult, auditorResult] = await Promise.allSettled([
     getEvent(id),
     getEventFinancials(id),
     getProfile(),
     listEventActivity(id),
+    listAuditorEvents(),
   ]);
 
   if (eventResult.status === "rejected" || financialsResult.status === "rejected" || profileResult.status === "rejected" || activityResult.status === "rejected") {
@@ -78,14 +80,17 @@ export default async function EventDetailPage({
       {activeTab === "overview" ? (
         <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
           <EventForm event={event} readOnly={!canEditEvent} />
-          <Card>
-            <CardHeader>
-              <CardTitle>Production Notes</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              {event.notes || "No notes yet."}
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <AuditorOverviewCard result={auditorResult.status === "fulfilled" ? auditorResult.value.events.find((item) => item.event.id === event.id) ?? null : null} />
+            <Card>
+              <CardHeader>
+                <CardTitle>Production Notes</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                {event.notes || "No notes yet."}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       ) : activeTab === "activity" ? (
         <ActivityList activity={activity} />
@@ -100,5 +105,36 @@ export default async function EventDetailPage({
         />
       )}
     </div>
+  );
+}
+
+function AuditorOverviewCard({ result }: { result: AuditorEventResult | null }) {
+  const issueCount = result ? result.counts.critical + result.counts.warning + result.counts.info : 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>My Auditor</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {result ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>{result.score}/100 readiness</Badge>
+              <Badge>{result.counts.critical} critical</Badge>
+              <Badge>{result.counts.warning} warning</Badge>
+            </div>
+            <p className="text-muted-foreground">
+              {issueCount === 0 ? "No readiness issues found." : `${issueCount} readiness ${issueCount === 1 ? "issue" : "issues"} found for this event.`}
+            </p>
+          </>
+        ) : (
+          <p className="text-muted-foreground">Auditor results are unavailable for this event.</p>
+        )}
+        <Button asChild variant="outline" size="sm">
+          <Link href="/dashboard/auditor">Open My Auditor</Link>
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

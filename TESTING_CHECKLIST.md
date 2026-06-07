@@ -201,10 +201,25 @@
 - [ ] Confirm the private `financial-documents` bucket exists for Receipts & Invoices Alpha.
 - [ ] Confirm Storage policies require authenticated users and an organization-prefixed path.
 
+## My Auditor Alpha
+
+- [ ] Confirm Owner can open My Auditor from the primary navigation.
+- [ ] Confirm My Auditor lists active events only and links each event back to event detail.
+- [ ] Confirm actual or paid budget items without active receipt/invoice documents are flagged as critical.
+- [ ] Confirm uploading an active receipt/invoice clears the missing-document issue.
+- [ ] Confirm `needs_review`, unaccepted receipt/invoice, and rejected document statuses are flagged.
+- [ ] Confirm negative projected or actual/entered net is flagged when test data creates it.
+- [ ] Confirm settlement notes and incomplete actual revenue/expense inputs are flagged.
+- [ ] Confirm Producer can view read-only auditor results.
+- [ ] Confirm Viewer can view read-only auditor results and cannot mutate underlying records.
+- [ ] Confirm no cross-organization data appears in auditor results.
+- [ ] Confirm opening My Auditor does not create audit rows.
+- [ ] Confirm browser console has no runtime errors.
+
 ## Beta Readiness Smoke
 
 - [ ] Confirm live beta URL access does not unexpectedly require Vercel login, or document the Vercel share/protection flow for testers.
-- [ ] Confirm primary navigation shows Dashboard, Events, My Team, and role-appropriate Settings.
+- [ ] Confirm primary navigation shows Dashboard, Events, My Team, My Auditor, and role-appropriate Settings.
 - [ ] Confirm event detail tabs show Overview, Budget, Revenue & Settlement, and Activity.
 - [ ] Confirm approved Juniper Berry logo and favicon are visible after deployment.
 - [ ] Confirm existing demo/QA settlement partner names display as Juniper Berry Productions.

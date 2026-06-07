@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ClipboardCheck, Contact, LayoutDashboard, Music2, ReceiptText, Settings, Users } from "lucide-react";
+import { ClipboardCheck, Contact, LayoutDashboard, Music2, Settings, Users } from "lucide-react";
 import { signOut } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { canManageUsers } from "@/lib/supabase/auth";
@@ -10,12 +10,11 @@ const items = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/events", label: "Events", icon: Music2 },
   { href: "/dashboard/team", label: "My Team", icon: Users },
+  { href: "/dashboard/auditor", label: "My Auditor", icon: ClipboardCheck },
 ];
 
 const comingSoonItems = [
   { label: "My Contacts", icon: Contact },
-  { label: "Receipts & Invoices", icon: ReceiptText },
-  { label: "My Auditor", icon: ClipboardCheck },
 ];
 
 export function AppNav({ role }: { role: OrganizationRole }) {
