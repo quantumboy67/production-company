@@ -1,6 +1,6 @@
 # Competitive Inspiration
 
-This document captures product patterns worth studying without copying another company's brand, interface, or operating model. Juniper Berry Production Company should stay focused on live-event production planning and financial reconciliation.
+This document captures product patterns worth studying without copying another company's brand, interface, or operating model. Juniper Berry Productions should stay focused on live-event production planning and financial reconciliation.
 
 ## FoxOMS / Sonderplan Patterns Worth Emulating
 

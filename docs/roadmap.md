@@ -1,6 +1,6 @@
 # Juniper Berry Product Roadmap
 
-This roadmap captures near-term implementation order for future Juniper Berry Production Company modules without adding unfinished product behavior to the beta app.
+This roadmap captures near-term implementation order for future Juniper Berry Productions modules without adding unfinished product behavior to the beta app.
 
 ## Guiding Principle
 

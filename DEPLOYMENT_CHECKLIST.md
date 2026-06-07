@@ -1,4 +1,4 @@
-# Juniper Berry Production Company Deployment Checklist
+# Juniper Berry Productions Deployment Checklist
 
 ## Supabase
 

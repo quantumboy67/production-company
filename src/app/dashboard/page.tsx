@@ -257,7 +257,7 @@ function UpcomingEventsTable({ events }: { events: DashboardEvent[] }) {
       <CardHeader>
         <CardTitle>Upcoming event financials</CardTitle>
         <p className="text-sm text-muted-foreground print:block hidden">
-          Juniper Berry Production Company - upcoming event financials
+          Juniper Berry Productions - upcoming event financials
         </p>
       </CardHeader>
       <CardContent>

@@ -1,6 +1,6 @@
-# Juniper Berry Production Company
+# Juniper Berry Productions
 
-Private internal MVP for Juniper Berry Production Company's live music event production management.
+Private internal MVP for Juniper Berry Productions' live music event production management.
 
 ## Stack
 

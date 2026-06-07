@@ -1127,7 +1127,9 @@ function SummaryRow({ label, value, strong }: { label: string; value: string; st
 
 function cleanPartnerName(value: string | null | undefined) {
   if (!value) return null;
-  return value === "Production Company" ? "Juniper Berry Production Company" : value;
+  return value === "Production Company" || value === "Juniper Berry Production Company"
+    ? "Juniper Berry Productions"
+    : value;
 }
 
 function sumBudget(items: BudgetItem[], costType: "hard" | "soft", key: "estimated_amount" | "actual_amount") {

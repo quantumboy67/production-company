@@ -1707,7 +1707,7 @@ async function createDemoEventForOrganization(organizationId: string) {
     organization_id: organizationId,
     event_id: event.id,
     partner_split_type: "true_50_50",
-    partner_a_name: "Juniper Berry Production Company",
+    partner_a_name: "Juniper Berry Productions",
     partner_b_name: "Venue Partner",
     partner_a_percent: 50,
     partner_b_percent: 50,

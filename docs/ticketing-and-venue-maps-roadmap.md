@@ -6,7 +6,7 @@ This roadmap locks the implementation order for access control, audit trail, ven
 
 TicketLeap remains the ticketing source of truth.
 
-Juniper Berry Production Company is the production planning and financial reconciliation system.
+Juniper Berry Productions is the production planning and financial reconciliation system.
 
 That means TicketLeap owns public checkout, live reserved seating inventory, buyer records, attendee records, refunds, and final ticketing sales reports. Juniper Berry should use ticketing data for internal planning, capacity modeling, holds/comps planning, gross potential, settlement support, and reconciliation.
 

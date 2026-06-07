@@ -18,14 +18,14 @@ export default async function LoginPage({
         <CardHeader className="items-center text-center">
           <Image
             src="/juniper-berry-logo.png"
-            alt="Juniper Berry Production Company"
+            alt="Juniper Berry Productions"
             width={1016}
             height={290}
             priority
             className="h-auto w-full max-w-sm rounded-md"
           />
-          <CardTitle className="sr-only">Juniper Berry Production Company</CardTitle>
-          <CardDescription>Live Event Command Center</CardDescription>
+          <CardTitle className="sr-only">Juniper Berry Productions</CardTitle>
+          <CardDescription>Event production command center</CardDescription>
         </CardHeader>
         <CardContent>
           {error ? (

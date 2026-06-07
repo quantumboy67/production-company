@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Juniper Berry Production Company",
-  description: "Internal live music production management for Juniper Berry Production Company",
+  title: "Juniper Berry Productions",
+  description: "Internal live music production management for Juniper Berry Productions",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },

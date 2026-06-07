@@ -1,4 +1,4 @@
-# Juniper Berry Production Company Testing Checklist
+# Juniper Berry Productions Testing Checklist
 
 ## Auth
 
@@ -169,5 +169,5 @@
 - [ ] Confirm primary navigation shows Dashboard, Events, My Team, and role-appropriate Settings.
 - [ ] Confirm event detail tabs show Overview, Budget, Revenue & Settlement, and Activity.
 - [ ] Confirm approved Juniper Berry logo and favicon are visible after deployment.
-- [ ] Confirm existing demo/QA settlement partner names display as Juniper Berry Production Company.
+- [ ] Confirm existing demo/QA settlement partner names display as Juniper Berry Productions.
 - [ ] Confirm dashboard financial labels match event settlement terminology.

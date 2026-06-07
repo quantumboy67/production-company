@@ -26,7 +26,7 @@ export default async function MyTeamPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">My Team</h1>
           <p className="text-sm text-muted-foreground">
-            People directly associated with Juniper Berry Production Company.
+            People directly associated with Juniper Berry Productions.
           </p>
         </div>
         {canManage ? (
