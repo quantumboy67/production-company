@@ -4,12 +4,14 @@ import {
 } from "@/app/actions";
 import { redirect } from "next/navigation";
 import { MemberRemoveForm } from "@/components/app/member-remove-form";
+import { RecentAccessActivity } from "@/components/app/recent-access-activity";
 import { TeamInviteForm } from "@/components/app/team-invite-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { listTeamMembers, type TeamMember } from "@/lib/data/team";
+import { listRecentAuthActivity } from "@/lib/data/auth-activity";
 import { prettyDate, titleize } from "@/lib/format";
 import { canManageUsers, getProfile } from "@/lib/supabase/auth";
 
@@ -26,7 +28,11 @@ export default async function TeamPage({
     redirect("/dashboard");
   }
 
-  const [members, params] = await Promise.all([listTeamMembers(), searchParams]);
+  const [members, recentAccessActivity, params] = await Promise.all([
+    listTeamMembers(),
+    listRecentAuthActivity(),
+    searchParams,
+  ]);
   const activeMembers = members.filter((member) => member.status === "active");
   const inactiveMembers = members.filter((member) => member.status !== "active");
 
@@ -85,6 +91,8 @@ export default async function TeamPage({
           </div>
         </details>
       ) : null}
+
+      <RecentAccessActivity activity={recentAccessActivity} />
     </div>
   );
 }

@@ -3,9 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { logAuthActivity } from "@/lib/auth-activity";
 import { logAuditEvent } from "@/lib/audit";
 import {
   getActiveMembership,
+  getMembership,
+  getUser,
   requireCanDeleteRecords,
   requireCanEditFinancials,
   requireCanManageEvents,
@@ -153,7 +156,22 @@ export async function signIn(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
 
-  const membership = await getActiveMembership({ allowPasswordChange: true });
+  const [membership, user] = await Promise.all([
+    getActiveMembership({ allowPasswordChange: true }),
+    requireUser(),
+  ]);
+
+  if (membership) {
+    await logAuthActivity({
+      organizationId: membership.organization_id,
+      profileId: membership.profile_id,
+      authUserId: user.id,
+      email: user.email ?? email,
+      eventType: "user.login",
+      summary: `Signed in ${user.email ?? email}.`,
+      metadata: { source: "login_form" },
+    });
+  }
 
   if (membership?.must_change_password) {
     redirect("/change-password");
@@ -164,6 +182,20 @@ export async function signIn(formData: FormData) {
 
 export async function signOut() {
   const supabase = await createClient();
+  const [membership, user] = await Promise.all([getMembership(), getUser()]);
+
+  if (membership) {
+    await logAuthActivity({
+      organizationId: membership.organization_id,
+      profileId: membership.profile_id,
+      authUserId: user?.id ?? membership.profile_id,
+      email: user?.email ?? null,
+      eventType: "user.logout",
+      summary: `Signed out ${user?.email ?? membership.profile_id}.`,
+      metadata: { source: "sign_out_button" },
+    });
+  }
+
   await supabase.auth.signOut();
   redirect("/login");
 }
@@ -1265,6 +1297,20 @@ export async function inviteUser(formData: FormData) {
     },
     metadata: { invited_profile_id: authUser.user.id },
   });
+  await logAuthActivity({
+    organizationId: membership.organization_id,
+    profileId: authUser.user.id,
+    authUserId: authUser.user.id,
+    email: parsed.data.email,
+    eventType: "user.invited",
+    summary: `Invited ${parsed.data.email} as ${parsed.data.role}.`,
+    metadata: {
+      invited_by_profile_id: membership.profile_id,
+      role: parsed.data.role,
+      status: "active",
+      first_login_change_required: true,
+    },
+  });
 
   revalidatePath("/dashboard/settings/team");
   redirect(
@@ -1326,6 +1372,20 @@ export async function updateMemberRole(formData: FormData) {
     afterData: after,
     metadata: { member_id: parsed.data.member_id, target_profile_id: target.profile_id },
   });
+  await logAuthActivity({
+    organizationId: membership.organization_id,
+    profileId: target.profile_id,
+    authUserId: target.profile_id,
+    email: after?.email ?? before?.email ?? null,
+    eventType: "user.role_changed",
+    summary: `Changed ${after?.email ?? target.profile_id} role from ${target.role} to ${parsed.data.role}.`,
+    metadata: {
+      actor_profile_id: membership.profile_id,
+      member_id: parsed.data.member_id,
+      previous_role: target.role,
+      new_role: parsed.data.role,
+    },
+  });
 
   revalidatePath("/dashboard/settings/team");
   redirect("/dashboard/settings/team?success=Role updated");
@@ -1370,6 +1430,18 @@ export async function forceMemberPasswordChange(formData: FormData) {
     summary: `Required password change for ${after?.email ?? target.profile_id}.`,
     afterData: after,
     metadata: { member_id: parsed.data.member_id, target_profile_id: target.profile_id },
+  });
+  await logAuthActivity({
+    organizationId: membership.organization_id,
+    profileId: target.profile_id,
+    authUserId: target.profile_id,
+    email: after?.email ?? null,
+    eventType: "user.password_change_required",
+    summary: `Required password change for ${after?.email ?? target.profile_id}.`,
+    metadata: {
+      actor_profile_id: membership.profile_id,
+      member_id: parsed.data.member_id,
+    },
   });
 
   revalidatePath("/dashboard/settings/team");
@@ -1430,6 +1502,20 @@ export async function removeMember(formData: FormData) {
     afterData: after,
     metadata: { member_id: parsed.data.member_id, target_profile_id: target.profile_id },
   });
+  await logAuthActivity({
+    organizationId: membership.organization_id,
+    profileId: target.profile_id,
+    authUserId: target.profile_id,
+    email: before?.email ?? null,
+    eventType: "user.removed",
+    summary: `Removed ${before?.email ?? target.profile_id} from the organization.`,
+    metadata: {
+      actor_profile_id: membership.profile_id,
+      member_id: parsed.data.member_id,
+      previous_status: before?.status ?? null,
+      new_status: after?.status ?? "removed",
+    },
+  });
 
   revalidatePath("/dashboard/settings/team");
   redirect("/dashboard/settings/team?success=Member removed");
@@ -1461,6 +1547,8 @@ export async function changePassword(formData: FormData) {
     redirect(`/change-password?error=${encodeURIComponent(memberError.message)}`);
   }
 
+  const user = await getUser();
+
   await logAuditEvent({
     organizationId: membership.organization_id,
     actorProfile: membership,
@@ -1469,6 +1557,24 @@ export async function changePassword(formData: FormData) {
     action: "team_member.password_changed",
     summary: "Changed password after temporary-password requirement.",
     metadata: { member_id: membership.id, target_profile_id: membership.profile_id },
+  });
+  await logAuthActivity({
+    organizationId: membership.organization_id,
+    profileId: membership.profile_id,
+    authUserId: membership.profile_id,
+    email: user?.email ?? null,
+    eventType: "user.first_login_completed",
+    summary: "Completed first-login password change.",
+    metadata: { member_id: membership.id },
+  });
+  await logAuthActivity({
+    organizationId: membership.organization_id,
+    profileId: membership.profile_id,
+    authUserId: membership.profile_id,
+    email: user?.email ?? null,
+    eventType: "user.password_changed",
+    summary: "Changed password after temporary-password requirement.",
+    metadata: { member_id: membership.id, source: "forced_password_change" },
   });
 
   revalidatePath("/dashboard", "layout");

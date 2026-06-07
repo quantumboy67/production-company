@@ -22,6 +22,18 @@ export type OrganizationMembership = {
   must_change_password: boolean;
 };
 
+export type AuthActivityRecord = {
+  id: string;
+  organization_id: string;
+  profile_id: string | null;
+  auth_user_id: string | null;
+  email: string | null;
+  event_type: string;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type EventRecord = {
   id: string;
   organization_id: string;

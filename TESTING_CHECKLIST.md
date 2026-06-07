@@ -92,6 +92,22 @@
 - [ ] Confirm CSV export does not include full before/after JSON.
 - [ ] Confirm Viewer and Producer Activity visibility follows current event-access policy.
 
+## Account Activity Tracking Alpha
+
+- [ ] Apply the Account Activity Tracking Alpha migration and confirm `public.auth_activity` exists.
+- [ ] Confirm Owner/Admin can read account activity for their organization.
+- [ ] Confirm Producer/Viewer cannot read `auth_activity` and cannot access Settings -> Team.
+- [ ] Owner invites a test user and confirms `user.invited` appears in Recent Access Activity.
+- [ ] Test user logs in and confirms `user.login` appears after the Owner reloads Settings -> Team.
+- [ ] Test user changes the temporary password and confirms `user.first_login_completed` and `user.password_changed` appear.
+- [ ] Test user clicks Sign out and confirms `user.logout` appears.
+- [ ] Owner changes the test user's role and confirms `user.role_changed` appears.
+- [ ] Owner forces password change and confirms `user.password_change_required` appears.
+- [ ] Owner removes/deactivates the test user and confirms `user.removed` appears.
+- [ ] Confirm Recent Access Activity shows the latest 20 events with timestamp, user/email, event type, and description.
+- [ ] Confirm no passwords, temporary passwords, service keys, auth tokens, or secrets appear in `auth_activity.metadata`.
+- [ ] Confirm browser console has no app runtime errors while viewing Settings -> Team.
+
 ## Dashboard
 
 - [ ] Confirm dashboard loads after sign-in.

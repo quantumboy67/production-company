@@ -29,6 +29,8 @@ This is separate from Settings -> Team. Settings -> Team remains the admin and u
 
 My Team is read-oriented. Owners/Admins can link from My Team to Settings -> Team when they need invite, role-change, password reset, or removal controls.
 
+Account Activity Tracking Alpha records account access and team lifecycle events for Owner/Admin review in Settings -> Team. It keeps notification delivery out of scope for now; future options are email notification, daily digest, Slack/Discord webhook, and SMS.
+
 ### My Contacts
 
 My Contacts will become the broader CRM-style contact database for artists, agents, managers, tour managers, venues, sponsors, media, vendors, security, hospitality, hotels, restaurants, photographers, engineers, insurance, city/permit contacts, and co-promoters.

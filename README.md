@@ -204,3 +204,25 @@ The audit trail intentionally does not log temporary passwords, password content
 Deletion Safety + Restore Alpha treats user-facing delete actions as archive/soft-delete for app-owned events and financial records. Owner/Admin users can archive with confirmation and optional reason, then restore archived events, budget items, revenue items, and ticket tiers from simple restore surfaces. Producers can edit allowed records but cannot delete; Viewers cannot mutate. See `docs/deletion-safety-alpha.md` for the inventory, audit event names, and hard-delete exceptions.
 
 Event-level audit rows are visible in the event detail `Activity` tab. In Alpha, Viewer, Producer, Admin, and Owner users who can access the event can view its Activity tab as read-only.
+
+## Account Activity Tracking Alpha
+
+Account Activity Tracking Alpha records account access and team lifecycle events in `public.auth_activity`.
+
+Tracked events:
+
+- `user.invited`
+- `user.login`
+- `user.logout`
+- `user.first_login_completed`
+- `user.password_changed`
+- `user.password_change_required`
+- `user.role_changed`
+- `user.removed`
+- `user.reactivated` reserved for future reactivation support
+
+Login activity is recorded when a user successfully submits the login form and the app validates an active organization membership. It is not recorded on every page load or session refresh. Logout activity means the user clicked Sign out; browser close, tab close, and session expiry are not treated as logout events.
+
+Owner/Admin users can view the latest account activity in Settings -> Team. Producer/Viewer users do not have access to the account activity table or the Settings -> Team page.
+
+Account activity records never include passwords, temporary passwords, auth tokens, service-role keys, or raw secret values. Notification delivery is intentionally not implemented yet. Future options include Owner/Admin email notifications, a daily digest, Slack/Discord webhooks, and SMS later.
