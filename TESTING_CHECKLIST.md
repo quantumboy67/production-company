@@ -148,6 +148,28 @@
 - [ ] Add a budget item and confirm the newly added row is briefly highlighted.
 - [ ] Confirm budget delete requires confirmation before removal.
 
+## Receipts & Invoices Alpha
+
+- [ ] Apply the Receipts & Invoices Alpha migration and confirm `public.budget_item_documents` exists.
+- [ ] Confirm the private `financial-documents` Storage bucket exists.
+- [ ] Confirm Owner/Admin/Producer can upload PDF, PNG, JPG/JPEG, WEBP, CSV, and XLSX documents up to 10 MB to a budget item.
+- [ ] Confirm unsupported file types and files over 10 MB are rejected.
+- [ ] Confirm document types include receipt, invoice, quote, W-9, COI, contract, and other.
+- [ ] Confirm document statuses include uploaded, needs review, accepted, rejected, and archived.
+- [ ] Confirm Owner/Admin/Producer can update active document status and notes.
+- [ ] Confirm Owner/Admin can archive a document with confirmation and optional reason.
+- [ ] Confirm archived documents leave the active budget-row document list and appear in the archived document section for Owner/Admin.
+- [ ] Confirm Owner/Admin can restore archived documents and restored documents return as needs review.
+- [ ] Confirm Producer cannot archive or restore documents.
+- [ ] Confirm Viewer can view/download active documents but cannot upload, update, archive, or restore.
+- [ ] Confirm active downloads use server-mediated signed URLs and the Storage bucket is not public.
+- [ ] Confirm budget rows warn when actual/paid costs have no receipt or invoice.
+- [ ] Confirm invoices warn until accepted and needs-review documents are surfaced.
+- [ ] Confirm `financial_document.uploaded`, `financial_document.status_changed`, `financial_document.archived`, and `financial_document.restored` appear in Activity.
+- [ ] Confirm Activity filters/search can find document events.
+- [ ] Confirm audit details do not include file contents, signed URLs, passwords, temporary passwords, tokens, service-role keys, or raw secrets.
+- [ ] Confirm Budget Save All still works with document UI present.
+
 ## Revenue And Ticket Tiers
 
 - [ ] Select `Revenue & Settlement`.
@@ -175,8 +197,8 @@
 
 ## Files
 
-- [ ] File upload UI is not implemented yet.
-- [ ] Confirm the private `event-documents` bucket exists.
+- [ ] Confirm the private `event-documents` bucket exists for legacy/future event document support.
+- [ ] Confirm the private `financial-documents` bucket exists for Receipts & Invoices Alpha.
 - [ ] Confirm Storage policies require authenticated users and an organization-prefixed path.
 
 ## Beta Readiness Smoke

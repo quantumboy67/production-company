@@ -4,6 +4,8 @@ export type RevenueStatus = "projected" | "confirmed" | "received";
 export type PartnerSplitType = "true_50_50" | "sweat_equity" | "siloed_revenue_streams" | "custom";
 export type OrganizationRole = "owner" | "admin" | "producer" | "viewer";
 export type OrganizationMemberStatus = "active" | "removed" | "disabled";
+export type FinancialDocumentType = "receipt" | "invoice" | "quote" | "w9" | "coi" | "contract" | "other";
+export type FinancialDocumentStatus = "uploaded" | "needs_review" | "accepted" | "rejected" | "archived";
 
 export type Profile = {
   id: string;
@@ -70,6 +72,30 @@ export type BudgetItem = {
   restored_at: string | null;
   restored_by: string | null;
   contacts?: { name: string } | null;
+  documents?: BudgetItemDocument[];
+};
+
+export type BudgetItemDocument = {
+  id: string;
+  organization_id: string;
+  event_id: string;
+  budget_item_id: string;
+  uploaded_by: string | null;
+  file_name: string;
+  storage_bucket: string;
+  storage_path: string;
+  mime_type: string;
+  file_size: number;
+  document_type: FinancialDocumentType;
+  document_status: FinancialDocumentStatus;
+  notes: string | null;
+  uploaded_at: string;
+  created_at: string;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  delete_reason: string | null;
+  restored_at: string | null;
+  restored_by: string | null;
 };
 
 export type RevenueItem = {

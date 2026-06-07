@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { canDeleteRecords, getProfile } from "@/lib/supabase/auth";
 import type {
   BudgetItem,
+  BudgetItemDocument,
   ContactOption,
   DashboardEvent,
   EventProfitLoss,
@@ -101,7 +102,7 @@ export async function getEventFinancials(eventId: string) {
   const profile = await getProfile();
   const supabase = await createClient();
   const canViewArchived = canDeleteRecords(profile.membership.role);
-  const [budget, archivedBudget, revenue, archivedRevenue, tickets, archivedTickets, settlement, contacts] = await Promise.all([
+  const [budget, archivedBudget, documents, revenue, archivedRevenue, tickets, archivedTickets, settlement, contacts] = await Promise.all([
     supabase
       .from("budget_items")
       .select("id, vendor_contact_id, cost_type, category, description, estimated_amount, actual_amount, status, due_date, paid_date, notes, deleted_at, deleted_by, delete_reason, restored_at, restored_by, contacts!budget_items_vendor_contact_id_fkey(name)")
@@ -117,6 +118,12 @@ export async function getEventFinancials(eventId: string) {
       .eq("organization_id", profile.organization_id)
       .not("deleted_at", "is", null)
       .order("deleted_at", { ascending: false }),
+    supabase
+      .from("budget_item_documents")
+      .select("id, organization_id, event_id, budget_item_id, uploaded_by, file_name, storage_bucket, storage_path, mime_type, file_size, document_type, document_status, notes, uploaded_at, created_at, deleted_at, deleted_by, delete_reason, restored_at, restored_by")
+      .eq("event_id", eventId)
+      .eq("organization_id", profile.organization_id)
+      .order("uploaded_at", { ascending: false }),
     supabase
       .from("revenue_items")
       .select("id, source, description, projected_amount, actual_amount, status, notes, deleted_at, deleted_by, delete_reason, restored_at, restored_by")
@@ -158,19 +165,44 @@ export async function getEventFinancials(eventId: string) {
       .order("name", { ascending: true }),
   ]);
 
-  for (const result of [budget, archivedBudget, revenue, archivedRevenue, tickets, archivedTickets, settlement, contacts]) {
+  for (const result of [budget, archivedBudget, documents, revenue, archivedRevenue, tickets, archivedTickets, settlement, contacts]) {
     if (result.error) throw new Error(result.error.message);
   }
 
+  const documentsByBudgetItemId = groupBudgetItemDocuments(
+    (documents.data ?? []) as BudgetItemDocument[],
+    canViewArchived,
+  );
+
   return {
-    budgetItems: (budget.data ?? []).map(normalizeBudgetItem),
-    archivedBudgetItems: canViewArchived ? (archivedBudget.data ?? []).map(normalizeBudgetItem) : [],
+    budgetItems: (budget.data ?? []).map((item) => attachBudgetItemDocuments(normalizeBudgetItem(item), documentsByBudgetItemId)),
+    archivedBudgetItems: canViewArchived
+      ? (archivedBudget.data ?? []).map((item) => attachBudgetItemDocuments(normalizeBudgetItem(item), documentsByBudgetItemId))
+      : [],
     revenueItems: (revenue.data ?? []) as RevenueItem[],
     archivedRevenueItems: canViewArchived ? ((archivedRevenue.data ?? []) as RevenueItem[]) : [],
     ticketTiers: (tickets.data ?? []) as TicketTier[],
     archivedTicketTiers: canViewArchived ? ((archivedTickets.data ?? []) as TicketTier[]) : [],
     settlement: settlement.data as Settlement | null,
     contacts: (contacts.data ?? []) as ContactOption[],
+  };
+}
+
+function groupBudgetItemDocuments(documents: BudgetItemDocument[], includeArchived: boolean) {
+  return documents.reduce((groups, document) => {
+    if (document.deleted_at && !includeArchived) return groups;
+
+    const existing = groups.get(document.budget_item_id) ?? [];
+    existing.push(document);
+    groups.set(document.budget_item_id, existing);
+    return groups;
+  }, new Map<string, BudgetItemDocument[]>());
+}
+
+function attachBudgetItemDocuments(item: BudgetItem, documentsByBudgetItemId: Map<string, BudgetItemDocument[]>) {
+  return {
+    ...item,
+    documents: documentsByBudgetItemId.get(item.id) ?? [],
   };
 }
 

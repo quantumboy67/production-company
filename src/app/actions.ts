@@ -18,7 +18,7 @@ import {
 } from "@/lib/supabase/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import type { OrganizationRole } from "@/lib/types";
+import type { BudgetItemDocument, OrganizationRole } from "@/lib/types";
 
 const eventSchema = z.object({
   id: z.string().uuid().optional(),
@@ -133,6 +133,43 @@ const restoreActionSchema = z.object({
   id: z.string().uuid(),
   event_id: z.string().uuid().optional(),
 });
+
+const financialDocumentTypes = ["receipt", "invoice", "quote", "w9", "coi", "contract", "other"] as const;
+const financialDocumentStatuses = ["uploaded", "needs_review", "accepted", "rejected"] as const;
+const financialDocumentBucket = "financial-documents";
+const maxFinancialDocumentFileSize = 10 * 1024 * 1024;
+const allowedFinancialDocumentMimeTypes = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "text/csv",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+
+const financialDocumentBaseSchema = z.object({
+  id: z.string().uuid().optional(),
+  event_id: z.string().uuid(),
+  budget_item_id: z.string().uuid(),
+});
+
+const uploadFinancialDocumentSchema = financialDocumentBaseSchema.extend({
+  document_type: z.enum(financialDocumentTypes),
+  document_status: z.enum(financialDocumentStatuses).default("uploaded"),
+  notes: z.string().trim().max(1000).optional(),
+});
+
+const updateFinancialDocumentStatusSchema = financialDocumentBaseSchema.required({ id: true }).extend({
+  document_status: z.enum(financialDocumentStatuses),
+  notes: z.string().trim().max(1000).optional(),
+});
+
+const archiveFinancialDocumentSchema = financialDocumentBaseSchema.required({ id: true }).extend({
+  confirm_intent: z.literal("archive"),
+  delete_reason: z.string().trim().max(500).optional(),
+});
+
+const restoreFinancialDocumentSchema = financialDocumentBaseSchema.required({ id: true });
 
 const updateMemberRoleSchema = memberIdSchema.extend({
   role: z.enum(["admin", "producer", "viewer"]),
@@ -566,6 +603,289 @@ export async function restoreBudgetItem(formData: FormData) {
   redirect(`/dashboard/events/${eventId}?tab=budget`);
 }
 
+export async function uploadBudgetItemDocument(formData: FormData) {
+  const profile = await requireCanEditFinancials();
+  const parsed = uploadFinancialDocumentSchema.safeParse(Object.fromEntries(formData));
+  const eventId = String(formData.get("event_id") ?? "");
+
+  if (!parsed.success) {
+    redirectToFinancialError(eventId, "budget", parsed.error.issues[0]?.message ?? "Document upload is invalid.");
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    redirectToFinancialError(parsed.data.event_id, "budget", "Choose a document to upload.");
+  }
+
+  if (file.size > maxFinancialDocumentFileSize) {
+    redirectToFinancialError(parsed.data.event_id, "budget", "Documents must be 10 MB or smaller.");
+  }
+
+  if (!allowedFinancialDocumentMimeTypes.has(file.type)) {
+    redirectToFinancialError(parsed.data.event_id, "budget", "Only PDF, PNG, JPG, WEBP, CSV, and XLSX documents are supported.");
+  }
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  await requireBudgetItemsAccess(supabase, profile.organization_id, parsed.data.event_id, [parsed.data.budget_item_id]);
+
+  const admin = createAdminClient();
+  const documentId = crypto.randomUUID();
+  const safeFileName = sanitizeFileName(file.name);
+  const storagePath = `${profile.organization_id}/${parsed.data.event_id}/${parsed.data.budget_item_id}/${documentId}/${safeFileName}`;
+  const { error: uploadError } = await admin.storage
+    .from(financialDocumentBucket)
+    .upload(storagePath, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    redirectToFinancialError(parsed.data.event_id, "budget", uploadError.message);
+  }
+
+  const { data, error } = await admin
+    .from("budget_item_documents")
+    .insert({
+      id: documentId,
+      organization_id: profile.organization_id,
+      event_id: parsed.data.event_id,
+      budget_item_id: parsed.data.budget_item_id,
+      uploaded_by: profile.profile_id,
+      file_name: safeFileName,
+      storage_bucket: financialDocumentBucket,
+      storage_path: storagePath,
+      mime_type: file.type,
+      file_size: file.size,
+      document_type: parsed.data.document_type,
+      document_status: parsed.data.document_status,
+      notes: parsed.data.notes || null,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    await admin.storage.from(financialDocumentBucket).remove([storagePath]);
+    redirectToFinancialError(parsed.data.event_id, "budget", error.message);
+  }
+
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "financial_document",
+    entityId: data.id,
+    action: "financial_document.uploaded",
+    summary: `${formatDocumentType(data.document_type)} uploaded: "${data.file_name}".`,
+    afterData: summarizeFinancialDocument(data),
+    metadata: {
+      event_id: parsed.data.event_id,
+      budget_item_id: parsed.data.budget_item_id,
+      document_type: data.document_type,
+      document_status: data.document_status,
+      file_name: data.file_name,
+    },
+  });
+
+  revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
+  redirect(`/dashboard/events/${parsed.data.event_id}?tab=budget&highlight_budget_item=${parsed.data.budget_item_id}`);
+}
+
+export async function updateBudgetItemDocumentStatus(formData: FormData) {
+  const profile = await requireCanEditFinancials();
+  const parsed = updateFinancialDocumentStatusSchema.safeParse(Object.fromEntries(formData));
+  const eventId = String(formData.get("event_id") ?? "");
+
+  if (!parsed.success) {
+    redirectToFinancialError(eventId, "budget", parsed.error.issues[0]?.message ?? "Document status update is invalid.");
+  }
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  await requireBudgetItemsAccess(supabase, profile.organization_id, parsed.data.event_id, [parsed.data.budget_item_id]);
+
+  const before = await getFinancialDocumentForAudit(
+    supabase,
+    profile.organization_id,
+    parsed.data.event_id,
+    parsed.data.budget_item_id,
+    parsed.data.id,
+  );
+  if (!before || before.deleted_at) {
+    redirectToFinancialError(parsed.data.event_id, "budget", "Document was not found or is archived.");
+  }
+
+  const { data, error } = await supabase
+    .from("budget_item_documents")
+    .update({
+      document_status: parsed.data.document_status,
+      notes: parsed.data.notes || null,
+      restored_at: null,
+      restored_by: null,
+    })
+    .eq("id", parsed.data.id)
+    .eq("budget_item_id", parsed.data.budget_item_id)
+    .eq("event_id", parsed.data.event_id)
+    .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
+    .select("*")
+    .single();
+
+  if (error) redirectToFinancialError(parsed.data.event_id, "budget", error.message);
+
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "financial_document",
+    entityId: parsed.data.id,
+    action: "financial_document.status_changed",
+    summary: `${formatDocumentType(data.document_type)} status changed to ${titleCaseStatus(data.document_status)}: "${data.file_name}".`,
+    beforeData: before ? summarizeFinancialDocument(before) : null,
+    afterData: summarizeFinancialDocument(data),
+    metadata: {
+      event_id: parsed.data.event_id,
+      budget_item_id: parsed.data.budget_item_id,
+      document_type: data.document_type,
+      document_status: data.document_status,
+      file_name: data.file_name,
+    },
+  });
+
+  revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
+  redirect(`/dashboard/events/${parsed.data.event_id}?tab=budget&highlight_budget_item=${parsed.data.budget_item_id}`);
+}
+
+export async function archiveBudgetItemDocument(formData: FormData) {
+  const profile = await requireCanDeleteRecords();
+  const parsed = archiveFinancialDocumentSchema.safeParse(Object.fromEntries(formData));
+  const eventId = String(formData.get("event_id") ?? "");
+
+  if (!parsed.success) {
+    redirectToFinancialError(eventId, "budget", "Archive confirmation is required.");
+  }
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  await requireBudgetItemsAccess(supabase, profile.organization_id, parsed.data.event_id, [parsed.data.budget_item_id]);
+
+  const before = await getFinancialDocumentForAudit(
+    supabase,
+    profile.organization_id,
+    parsed.data.event_id,
+    parsed.data.budget_item_id,
+    parsed.data.id,
+  );
+  if (!before || before.deleted_at) {
+    redirectToFinancialError(parsed.data.event_id, "budget", "Document was not found or is already archived.");
+  }
+
+  const { data, error } = await supabase
+    .from("budget_item_documents")
+    .update({
+      document_status: "archived",
+      deleted_at: new Date().toISOString(),
+      deleted_by: profile.profile_id,
+      delete_reason: parsed.data.delete_reason || null,
+      restored_at: null,
+      restored_by: null,
+    })
+    .eq("id", parsed.data.id)
+    .eq("budget_item_id", parsed.data.budget_item_id)
+    .eq("event_id", parsed.data.event_id)
+    .eq("organization_id", profile.organization_id)
+    .is("deleted_at", null)
+    .select("*")
+    .single();
+
+  if (error) redirectToFinancialError(parsed.data.event_id, "budget", error.message);
+
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "financial_document",
+    entityId: parsed.data.id,
+    action: "financial_document.archived",
+    summary: `${formatDocumentType(before.document_type)} archived: "${before.file_name}".`,
+    beforeData: before ? summarizeFinancialDocument(before) : null,
+    afterData: summarizeFinancialDocument(data),
+    metadata: {
+      event_id: parsed.data.event_id,
+      budget_item_id: parsed.data.budget_item_id,
+      document_type: before.document_type,
+      file_name: before.file_name,
+      delete_reason: parsed.data.delete_reason || null,
+    },
+  });
+
+  revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
+  redirect(`/dashboard/events/${parsed.data.event_id}?tab=budget&highlight_budget_item=${parsed.data.budget_item_id}`);
+}
+
+export async function restoreBudgetItemDocument(formData: FormData) {
+  const profile = await requireCanDeleteRecords();
+  const parsed = restoreFinancialDocumentSchema.safeParse(Object.fromEntries(formData));
+  const eventId = String(formData.get("event_id") ?? "");
+
+  if (!parsed.success) {
+    redirectToFinancialError(eventId, "budget", "Invalid document restore request.");
+  }
+
+  const supabase = await createClient();
+  await requireEventAccess(supabase, profile.organization_id, parsed.data.event_id);
+  await requireBudgetItemsAccess(supabase, profile.organization_id, parsed.data.event_id, [parsed.data.budget_item_id]);
+
+  const before = await getFinancialDocumentForAudit(
+    supabase,
+    profile.organization_id,
+    parsed.data.event_id,
+    parsed.data.budget_item_id,
+    parsed.data.id,
+  );
+  if (!before?.deleted_at) {
+    redirectToFinancialError(parsed.data.event_id, "budget", "Document is not archived.");
+  }
+
+  const { data, error } = await supabase
+    .from("budget_item_documents")
+    .update({
+      document_status: "needs_review",
+      deleted_at: null,
+      deleted_by: null,
+      delete_reason: null,
+      restored_at: new Date().toISOString(),
+      restored_by: profile.profile_id,
+    })
+    .eq("id", parsed.data.id)
+    .eq("budget_item_id", parsed.data.budget_item_id)
+    .eq("event_id", parsed.data.event_id)
+    .eq("organization_id", profile.organization_id)
+    .not("deleted_at", "is", null)
+    .select("*")
+    .single();
+
+  if (error) redirectToFinancialError(parsed.data.event_id, "budget", error.message);
+
+  await logAuditEvent({
+    organizationId: profile.organization_id,
+    actorProfile: profile,
+    entityType: "financial_document",
+    entityId: parsed.data.id,
+    action: "financial_document.restored",
+    summary: `${formatDocumentType(data.document_type)} restored: "${data.file_name}".`,
+    beforeData: before ? summarizeFinancialDocument(before) : null,
+    afterData: summarizeFinancialDocument(data),
+    metadata: {
+      event_id: parsed.data.event_id,
+      budget_item_id: parsed.data.budget_item_id,
+      document_type: data.document_type,
+      document_status: data.document_status,
+      file_name: data.file_name,
+    },
+  });
+
+  revalidatePath(`/dashboard/events/${parsed.data.event_id}`);
+  redirect(`/dashboard/events/${parsed.data.event_id}?tab=budget&highlight_budget_item=${parsed.data.budget_item_id}`);
+}
+
 export async function createRevenueItem(formData: FormData) {
   const profile = await requireCanEditFinancials();
   const parsed = revenueItemSchema.omit({ id: true }).safeParse(Object.fromEntries(formData));
@@ -971,6 +1291,25 @@ async function getBudgetItemsForAudit(supabase: SupabaseServerClient, organizati
   return (data ?? []) as AuditRow[];
 }
 
+async function getFinancialDocumentForAudit(
+  supabase: SupabaseServerClient,
+  organizationId: string,
+  eventId: string,
+  budgetItemId: string,
+  id: string,
+) {
+  const { data } = await supabase
+    .from("budget_item_documents")
+    .select("*")
+    .eq("id", id)
+    .eq("budget_item_id", budgetItemId)
+    .eq("event_id", eventId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  return data as BudgetItemDocument | null;
+}
+
 async function getRevenueItemForAudit(supabase: SupabaseServerClient, organizationId: string, eventId: string, id: string) {
   const { data } = await supabase
     .from("revenue_items")
@@ -1038,6 +1377,27 @@ function summarizeBudgetItem(row: AuditRow) {
   return pickAuditFields(row, ["id", "event_id", "cost_type", "category", "description", "estimated_amount", "actual_amount", "status", "vendor_contact_id", "due_date", "paid_date", "notes", "deleted_at", "deleted_by", "delete_reason", "restored_at", "restored_by"]);
 }
 
+function summarizeFinancialDocument(row: AuditRow) {
+  return pickAuditFields(row, [
+    "id",
+    "event_id",
+    "budget_item_id",
+    "uploaded_by",
+    "file_name",
+    "mime_type",
+    "file_size",
+    "document_type",
+    "document_status",
+    "notes",
+    "uploaded_at",
+    "deleted_at",
+    "deleted_by",
+    "delete_reason",
+    "restored_at",
+    "restored_by",
+  ]);
+}
+
 function summarizeRevenueItem(row: AuditRow) {
   return pickAuditFields(row, ["id", "event_id", "source", "description", "projected_amount", "actual_amount", "status", "notes", "deleted_at", "deleted_by", "delete_reason", "restored_at", "restored_by"]);
 }
@@ -1052,6 +1412,32 @@ function summarizeSettlement(row: AuditRow) {
 
 function pickAuditFields(row: AuditRow, fields: string[]) {
   return Object.fromEntries(fields.map((field) => [field, row[field] ?? null]));
+}
+
+function sanitizeFileName(value: string) {
+  const trimmed = value.trim() || "document";
+  return trimmed
+    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/\s+/g, " ")
+    .slice(0, 160);
+}
+
+function formatDocumentType(value: string) {
+  const labels: Record<string, string> = {
+    receipt: "Receipt",
+    invoice: "Invoice",
+    quote: "Quote",
+    w9: "W-9",
+    coi: "COI",
+    contract: "Contract",
+    other: "Document",
+  };
+
+  return labels[value] ?? "Document";
+}
+
+function titleCaseStatus(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export async function createDemoEvent() {

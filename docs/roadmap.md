@@ -15,7 +15,7 @@ Future modules should not weaken organization scoping, role checks, RLS, or audi
 1. Access Control Alpha
 2. Audit Trail Alpha
 3. My Team Alpha
-4. Receipts & Invoices
+4. Receipts & Invoices Alpha
 5. My Auditor
 6. Venue Maps / TicketLeap CSV Import later
 
@@ -41,9 +41,9 @@ Future contact fields may include name, company, role/title, email, phone, websi
 
 ### Receipts & Invoices
 
-Receipts & Invoices will attach financial documents to budget and expense items. Future documents may include receipts, vendor invoices, quotes, W-9s, certificates of insurance, contracts, and settlement support.
+Receipts & Invoices Alpha attaches financial documents to budget items using private Supabase Storage and auditable metadata. Documents may be receipts, vendor invoices, quotes, W-9s, certificates of insurance, contracts, and settlement support.
 
-This module touches financial controls because it changes how expenses are supported, marked complete, and reviewed. It should use private Supabase Storage and should not be implemented until role-aware and auditable behavior is ready.
+This module touches financial controls because it changes how expenses are supported, marked complete, and reviewed. The alpha keeps scope narrow: upload/download, status, missing receipt/invoice indicators, archive/restore, and audit visibility. OCR, invoice parsing, automated missing-document notifications, and My Auditor review workflows remain future work.
 
 ### My Auditor
 

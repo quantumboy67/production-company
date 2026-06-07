@@ -32,6 +32,7 @@ The migration creates:
 - Sample event data for `Cedric Burnside @ Fairweather`
 - Access Control Alpha membership roles and RLS policies
 - Audit Trail Alpha `audit_log` table, indexes, and append-only RLS posture
+- Receipts & Invoices Alpha `financial-documents` private Storage bucket and budget item document metadata
 
 ## First User And Organization
 
@@ -196,6 +197,7 @@ Currently audited:
 - ticket tier create, update, delete
 - settlement update
 - team member invite, role change, removal, forced password change, and completed password change
+- financial document upload, status change, archive, and restore
 
 Audit rows include actor context, action, summary, before/after JSON where useful, and metadata such as related `event_id`.
 
@@ -204,6 +206,25 @@ The audit trail intentionally does not log temporary passwords, password content
 Deletion Safety + Restore Alpha treats user-facing delete actions as archive/soft-delete for app-owned events and financial records. Owner/Admin users can archive with confirmation and optional reason, then restore archived events, budget items, revenue items, and ticket tiers from simple restore surfaces. Producers can edit allowed records but cannot delete; Viewers cannot mutate. See `docs/deletion-safety-alpha.md` for the inventory, audit event names, and hard-delete exceptions.
 
 Event-level audit rows are visible in the event detail `Activity` tab. In Alpha, Viewer, Producer, Admin, and Owner users who can access the event can view its Activity tab as read-only.
+
+## Receipts & Invoices Alpha
+
+Receipts & Invoices Alpha attaches private financial documents to event budget items. Supported document types are receipt, invoice, quote, W-9, COI, contract, and other. Supported uploads are PDF, PNG, JPG/JPEG, WEBP, CSV, and XLSX up to 10 MB.
+
+Document metadata is stored in `public.budget_item_documents`; files are stored in the private `financial-documents` Supabase Storage bucket. Download links are server-mediated and use short-lived signed URLs. Owner/Admin/Producer users can upload documents and update non-archived document statuses. Owner/Admin users can archive and restore documents. Viewer users can read document metadata and download active documents for events they can access, but cannot mutate records.
+
+Budget rows show compact receipt/invoice indicators. Actual or paid budget items warn when no receipt/invoice is attached, invoices warn until accepted, and documents marked `needs_review` are surfaced for review.
+
+Audited document events:
+
+- `financial_document.uploaded`
+- `financial_document.status_changed`
+- `financial_document.archived`
+- `financial_document.restored`
+
+Audit rows include document names, types, statuses, sizes, and related event/budget item IDs. They do not include file contents, signed URLs, passwords, tokens, temporary passwords, service-role keys, or raw secrets.
+
+This alpha does not include OCR, invoice parsing, missing-document email/SMS notifications, My Auditor workflows, CRM, venue maps, or TicketLeap imports.
 
 ## Account Activity Tracking Alpha
 

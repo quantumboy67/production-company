@@ -129,7 +129,7 @@ export function ActivityList({ activity }: { activity: AuditLogRecord[] }) {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge>{formatAction(item.action)}</Badge>
+                      <Badge>{formatActivityAction(item)}</Badge>
                       <Badge className="bg-muted/20">{formatCategory(getActivityCategory(item))}</Badge>
                       <p className="text-xs text-muted-foreground">{formatTimestamp(item.created_at)}</p>
                     </div>
@@ -222,6 +222,10 @@ function formatAction(action: string) {
     "budget_item.deleted": "Budget item archived",
     "budget_item.restored": "Budget item restored",
     "budget_items.batch_updated": "Budget batch saved",
+    "financial_document.uploaded": "Document uploaded",
+    "financial_document.status_changed": "Document status changed",
+    "financial_document.archived": "Document archived",
+    "financial_document.restored": "Document restored",
     "revenue_item.created": "Revenue created",
     "revenue_item.updated": "Revenue updated",
     "revenue_item.deleted": "Revenue item archived",
@@ -244,6 +248,23 @@ function formatAction(action: string) {
   };
 
   return labels[action] ?? titleize(action.replace(/[._]/g, " "));
+}
+
+function formatActivityAction(item: AuditLogRecord) {
+  if (item.action === "financial_document.uploaded") {
+    const documentType = getMetadataString(item.metadata, "document_type");
+
+    if (documentType === "receipt") return "Receipt uploaded";
+    if (documentType === "invoice") return "Invoice uploaded";
+  }
+
+  return formatAction(item.action);
+}
+
+function getMetadataString(metadata: AuditLogRecord["metadata"], key: string) {
+  if (!metadata || typeof metadata !== "object") return null;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : null;
 }
 
 function formatEntity(entityType: string) {
@@ -282,6 +303,7 @@ function matchesFilters(item: AuditLogRecord, filters: FilterState) {
     item.summary,
     item.action,
     formatAction(item.action),
+    formatActivityAction(item),
     item.entity_type,
     formatEntity(item.entity_type),
     actor,
@@ -324,9 +346,11 @@ function getActivityCategory(item: AuditLogRecord): ActivityCategory {
   if (item.entity_type === "team_member" || item.action.startsWith("team_member.")) return "team";
   if (
     item.entity_type === "budget_item" ||
+    item.entity_type === "financial_document" ||
     item.entity_type === "revenue_item" ||
     item.entity_type === "ticket_tier" ||
     item.action.startsWith("budget_") ||
+    item.action.startsWith("financial_document.") ||
     item.action.startsWith("revenue_") ||
     item.action.startsWith("ticket_")
   ) {
@@ -346,7 +370,7 @@ function toCsv(items: AuditLogRecord[]) {
     ...items.map((item) => [
       item.created_at,
       formatActor(item),
-      formatAction(item.action),
+      formatActivityAction(item),
       formatEntity(item.entity_type),
       item.summary,
     ]),

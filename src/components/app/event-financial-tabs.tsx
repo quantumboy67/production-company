@@ -4,20 +4,24 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
+  archiveBudgetItemDocument,
   createBudgetItem,
   createRevenueItem,
   createTicketTier,
   deleteBudgetItem,
   deleteRevenueItem,
   deleteTicketTier,
+  restoreBudgetItemDocument,
   restoreBudgetItem,
   restoreRevenueItem,
   restoreTicketTier,
+  updateBudgetItemDocumentStatus,
   updateBudgetItemsBatch,
   updateBudgetItem,
   updateRevenueItem,
   updateSettlement,
   updateTicketTier,
+  uploadBudgetItemDocument,
 } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +29,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { money, titleize } from "@/lib/format";
-import type { BudgetItem, ContactOption, RevenueItem, Settlement, TicketTier } from "@/lib/types";
+import type {
+  BudgetItem,
+  BudgetItemDocument,
+  ContactOption,
+  FinancialDocumentStatus,
+  FinancialDocumentType,
+  RevenueItem,
+  Settlement,
+  TicketTier,
+} from "@/lib/types";
 
 type Props = {
   activeTab: string;
@@ -78,6 +91,8 @@ const costStatuses = ["planned", "quoted", "approved", "due", "paid", "cancelled
 const revenueSources = ["ticket", "sponsorship", "bar_bounty", "merch_split", "other"] as const;
 const revenueStatuses = ["projected", "confirmed", "received"] as const;
 const splitTypes = ["true_50_50", "sweat_equity", "siloed_revenue_streams", "custom"] as const;
+const financialDocumentTypes: FinancialDocumentType[] = ["receipt", "invoice", "quote", "w9", "coi", "contract", "other"];
+const activeFinancialDocumentStatuses: Exclude<FinancialDocumentStatus, "archived">[] = ["uploaded", "needs_review", "accepted", "rejected"];
 
 type BudgetDraft = {
   id: string;
@@ -116,6 +131,10 @@ export function EventFinancialTabs(props: Props) {
     [budgetDrafts, originalBudgetById],
   );
   const displayBudgetItems = useMemo(() => budgetDrafts.map(draftToBudgetItem), [budgetDrafts]);
+  const budgetDocumentsByItemId = useMemo(
+    () => new Map(props.budgetItems.map((item) => [item.id, item.documents ?? []])),
+    [props.budgetItems],
+  );
   const totals = calculateFinancialSettlement({
     ...props,
     budgetItems: displayBudgetItems,
@@ -225,6 +244,7 @@ export function EventFinancialTabs(props: Props) {
               hasUnsavedChanges={dirtyCount > 0}
               canEdit={props.canEditFinancials}
               canDelete={props.canDeleteFinancials}
+              documentsByItemId={budgetDocumentsByItemId}
               onChange={updateBudgetDraft}
             />
             <BudgetList
@@ -237,6 +257,7 @@ export function EventFinancialTabs(props: Props) {
               hasUnsavedChanges={dirtyCount > 0}
               canEdit={props.canEditFinancials}
               canDelete={props.canDeleteFinancials}
+              documentsByItemId={budgetDocumentsByItemId}
               onChange={updateBudgetDraft}
             />
             {props.canDeleteFinancials ? (
@@ -406,6 +427,7 @@ function BudgetList({
   hasUnsavedChanges,
   canEdit,
   canDelete,
+  documentsByItemId,
   onChange,
 }: {
   title: string;
@@ -417,6 +439,7 @@ function BudgetList({
   hasUnsavedChanges: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  documentsByItemId: Map<string, BudgetItemDocument[]>;
   onChange: (id: string, values: Partial<BudgetDraft>) => void;
 }) {
   return (
@@ -431,16 +454,19 @@ function BudgetList({
         {items.length === 0 ? (
           <p className="rounded-md border p-4 text-sm text-muted-foreground">No budget items yet.</p>
         ) : (
-          items.map((item) => (
-            <div
-              key={item.id}
-              data-budget-item-id={item.id}
-              className={[
-                "rounded-md border p-4 transition-colors",
-                highlightedId === item.id ? "border-primary bg-primary/10" : "bg-card",
-                dirtyIds.has(item.id) ? "ring-1 ring-primary/40" : "",
-              ].join(" ")}
-            >
+          items.map((item) => {
+            const documents = documentsByItemId.get(item.id) ?? [];
+
+            return (
+              <div
+                key={item.id}
+                data-budget-item-id={item.id}
+                className={[
+                  "rounded-md border p-4 transition-colors",
+                  highlightedId === item.id ? "border-primary bg-primary/10" : "bg-card",
+                  dirtyIds.has(item.id) ? "ring-1 ring-primary/40" : "",
+                ].join(" ")}
+              >
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b pb-3">
                 <div>
                   <p className="font-medium">{item.description || "Untitled budget item"}</p>
@@ -565,12 +591,277 @@ function BudgetList({
                   ) : null}
                 </div>
               </form>
+              <BudgetItemDocuments
+                eventId={eventId}
+                budgetItem={item}
+                documents={documents}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                hasUnsavedChanges={hasUnsavedChanges}
+              />
             </div>
-          ))
+            );
+          })
         )}
       </CardContent>
     </Card>
   );
+}
+
+function BudgetItemDocuments({
+  eventId,
+  budgetItem,
+  documents,
+  canEdit,
+  canDelete,
+  hasUnsavedChanges,
+}: {
+  eventId: string;
+  budgetItem: BudgetDraft;
+  documents: BudgetItemDocument[];
+  canEdit: boolean;
+  canDelete: boolean;
+  hasUnsavedChanges: boolean;
+}) {
+  const activeDocuments = documents.filter((document) => !document.deleted_at);
+  const archivedDocuments = documents.filter((document) => document.deleted_at);
+  const warnings = getDocumentWarnings(budgetItem, activeDocuments);
+
+  return (
+    <div className="mt-4 space-y-3 border-t pt-3" data-testid={`budget-documents-${budgetItem.id}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium">Receipts & invoices</p>
+          <p className="text-xs text-muted-foreground">{activeDocuments.length} active {activeDocuments.length === 1 ? "document" : "documents"}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {activeDocuments.length === 0 ? (
+            <DocumentBadge label="No document" tone="muted" />
+          ) : (
+            activeDocuments.slice(0, 3).map((document) => (
+              <DocumentBadge key={document.id} label={`${formatDocumentType(document.document_type)}: ${titleize(document.document_status)}`} tone={document.document_status === "accepted" ? "ok" : document.document_status === "rejected" ? "danger" : "warn"} />
+            ))
+          )}
+        </div>
+      </div>
+
+      {warnings.length > 0 ? (
+        <div className="space-y-1 rounded-md border border-primary/20 bg-primary/5 p-2 text-xs text-muted-foreground">
+          {warnings.map((warning) => <p key={warning}>{warning}</p>)}
+        </div>
+      ) : null}
+
+      {canEdit ? (
+        <form action={uploadBudgetItemDocument} className="grid gap-2 rounded-md border bg-muted/10 p-3 md:grid-cols-6" encType="multipart/form-data">
+          <input type="hidden" name="event_id" value={eventId} />
+          <input type="hidden" name="budget_item_id" value={budgetItem.id} />
+          <Field label="Type">
+            <Select name="document_type" defaultValue="receipt" data-testid={`budget-document-type-${budgetItem.id}`}>
+              {financialDocumentTypes.map((type) => <option key={type} value={type}>{formatDocumentType(type)}</option>)}
+            </Select>
+          </Field>
+          <Field label="Status">
+            <Select name="document_status" defaultValue="uploaded">
+              {activeFinancialDocumentStatuses.map((status) => <option key={status} value={status}>{titleize(status)}</option>)}
+            </Select>
+          </Field>
+          <Field label="File" className="md:col-span-2">
+            <Input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.csv,.xlsx,application/pdf,image/png,image/jpeg,image/webp,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required data-testid={`budget-document-file-${budgetItem.id}`} />
+          </Field>
+          <Field label="Notes" className="md:col-span-1">
+            <Input name="notes" placeholder="Optional" />
+          </Field>
+          <div className="flex items-end">
+            <Button type="submit" size="sm" disabled={hasUnsavedChanges} title={hasUnsavedChanges ? "Save or discard budget changes before uploading." : undefined} data-testid={`budget-document-upload-${budgetItem.id}`}>
+              Upload
+            </Button>
+          </div>
+        </form>
+      ) : null}
+
+      {activeDocuments.length > 0 ? (
+        <div className="space-y-2">
+          {activeDocuments.map((document) => (
+            <DocumentRow
+              key={document.id}
+              eventId={eventId}
+              document={document}
+              canEdit={canEdit}
+              canDelete={canDelete}
+              disabled={hasUnsavedChanges}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {canDelete && archivedDocuments.length > 0 ? (
+        <details className="rounded-md border bg-muted/10 p-3 text-sm">
+          <summary className="cursor-pointer font-medium">Archived documents ({archivedDocuments.length})</summary>
+          <div className="mt-3 space-y-2">
+            {archivedDocuments.map((document) => (
+              <ArchivedDocumentRow key={document.id} eventId={eventId} document={document} />
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function DocumentRow({
+  eventId,
+  document,
+  canEdit,
+  canDelete,
+  disabled,
+}: {
+  eventId: string;
+  document: BudgetItemDocument;
+  canEdit: boolean;
+  canDelete: boolean;
+  disabled: boolean;
+}) {
+  return (
+    <div className="grid gap-2 rounded-md border bg-background p-3 text-sm lg:grid-cols-[1fr_280px_auto]">
+      <div>
+        <a className="font-medium underline-offset-4 hover:underline" href={`/dashboard/documents/${document.id}/download`}>
+          {document.file_name}
+        </a>
+        <p className="text-xs text-muted-foreground">
+          {formatDocumentType(document.document_type)} / {titleize(document.document_status)} / {formatFileSize(document.file_size)}
+        </p>
+        {document.notes ? <p className="mt-1 text-xs text-muted-foreground">{document.notes}</p> : null}
+      </div>
+      {canEdit ? (
+        <form action={updateBudgetItemDocumentStatus} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <input type="hidden" name="id" value={document.id} />
+          <input type="hidden" name="event_id" value={eventId} />
+          <input type="hidden" name="budget_item_id" value={document.budget_item_id} />
+          <Select name="document_status" defaultValue={document.document_status === "archived" ? "needs_review" : document.document_status} disabled={disabled} aria-label={`Status for ${document.file_name}`}>
+            {activeFinancialDocumentStatuses.map((status) => <option key={status} value={status}>{titleize(status)}</option>)}
+          </Select>
+          <Input name="notes" defaultValue={document.notes ?? ""} disabled={disabled} aria-label={`Notes for ${document.file_name}`} />
+          <Button type="submit" size="sm" variant="secondary" disabled={disabled}>Save</Button>
+        </form>
+      ) : null}
+      {canDelete ? (
+        <DocumentArchiveButton document={document} eventId={eventId} disabled={disabled} />
+      ) : null}
+    </div>
+  );
+}
+
+function ArchivedDocumentRow({ eventId, document }: { eventId: string; document: BudgetItemDocument }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background p-3">
+      <div>
+        <p className="font-medium">{document.file_name}</p>
+        <p className="text-xs text-muted-foreground">
+          {formatDocumentType(document.document_type)} / Archived / {formatFileSize(document.file_size)}
+        </p>
+        {document.delete_reason ? <p className="mt-1 text-xs text-muted-foreground">Reason: {document.delete_reason}</p> : null}
+      </div>
+      <form action={restoreBudgetItemDocument}>
+        <input type="hidden" name="id" value={document.id} />
+        <input type="hidden" name="event_id" value={eventId} />
+        <input type="hidden" name="budget_item_id" value={document.budget_item_id} />
+        <Button type="submit" variant="outline" size="sm" data-testid={`restore-financial-document-${document.id}`}>
+          Restore
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+function DocumentArchiveButton({
+  document,
+  eventId,
+  disabled,
+}: {
+  document: BudgetItemDocument;
+  eventId: string;
+  disabled: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="flex items-start justify-end">
+      <Button
+        type="button"
+        variant="destructive"
+        size="sm"
+        disabled={disabled}
+        title={disabled ? "Save or discard budget changes before archiving documents." : undefined}
+        onClick={() => setIsOpen(true)}
+        data-testid={`archive-financial-document-open-${document.id}`}
+      >
+        Archive
+      </Button>
+      {isOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+          <form
+            action={archiveBudgetItemDocument}
+            aria-modal="true"
+            className="w-full max-w-md rounded-md border bg-background p-5 shadow-lg"
+            role="dialog"
+            data-testid="financial-document-archive-dialog"
+          >
+            <input type="hidden" name="id" value={document.id} />
+            <input type="hidden" name="event_id" value={eventId} />
+            <input type="hidden" name="budget_item_id" value={document.budget_item_id} />
+            <input type="hidden" name="confirm_intent" value="archive" />
+            <div className="space-y-2">
+              <h2 className="text-lg font-semibold">Archive document?</h2>
+              <p className="text-sm text-muted-foreground">This will archive &quot;{document.file_name}&quot; and remove it from active budget document views.</p>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-muted-foreground">Reason optional</span>
+                <textarea
+                  className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  name="delete_reason"
+                  placeholder="Why is this document being archived?"
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} data-testid={`archive-financial-document-cancel-${document.id}`}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="destructive" data-testid={`archive-financial-document-confirm-${document.id}`}>
+                Archive
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DocumentBadge({ label, tone }: { label: string; tone: "muted" | "warn" | "ok" | "danger" }) {
+  const classes: Record<typeof tone, string> = {
+    muted: "border bg-muted/20 text-muted-foreground",
+    warn: "border border-primary/30 bg-primary/5 text-foreground",
+    ok: "border border-green-700/30 bg-green-700/10 text-foreground",
+    danger: "border border-destructive/30 bg-destructive/10 text-foreground",
+  };
+
+  return <span className={`rounded-md px-2 py-1 text-xs ${classes[tone]}`}>{label}</span>;
+}
+
+function getDocumentWarnings(item: BudgetDraft, documents: BudgetItemDocument[]) {
+  const actualAmount = Number(item.actual_amount || 0);
+  const isPaidOrActual = item.status === "paid" || actualAmount > 0;
+  const hasReceiptOrInvoice = documents.some((document) => document.document_type === "receipt" || document.document_type === "invoice");
+  const hasInvoice = documents.some((document) => document.document_type === "invoice");
+  const hasAcceptedInvoice = documents.some((document) => document.document_type === "invoice" && document.document_status === "accepted");
+  const hasNeedsReview = documents.some((document) => document.document_status === "needs_review");
+  const warnings: string[] = [];
+
+  if (isPaidOrActual && !hasReceiptOrInvoice) warnings.push("Actual or paid cost is missing a receipt or invoice.");
+  if (hasInvoice && !hasAcceptedInvoice) warnings.push("Invoice uploaded but not accepted yet.");
+  if (hasNeedsReview) warnings.push("One or more documents needs review.");
+
+  return warnings;
 }
 
 function BudgetBatchToolbar({
@@ -1130,6 +1421,27 @@ function cleanPartnerName(value: string | null | undefined) {
   return value === "Production Company" || value === "Juniper Berry Production Company"
     ? "Juniper Berry Productions"
     : value;
+}
+
+function formatDocumentType(value: string) {
+  const labels: Record<string, string> = {
+    receipt: "Receipt",
+    invoice: "Invoice",
+    quote: "Quote",
+    w9: "W-9",
+    coi: "COI",
+    contract: "Contract",
+    other: "Document",
+  };
+
+  return labels[value] ?? titleize(value);
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  const kilobytes = bytes / 1024;
+  if (kilobytes < 1024) return `${kilobytes.toFixed(1)} KB`;
+  return `${(kilobytes / 1024).toFixed(1)} MB`;
 }
 
 function sumBudget(items: BudgetItem[], costType: "hard" | "soft", key: "estimated_amount" | "actual_amount") {
