@@ -224,3 +224,12 @@
 - [ ] Confirm approved Juniper Berry logo and favicon are visible after deployment.
 - [ ] Confirm existing demo/QA settlement partner names display as Juniper Berry Productions.
 - [ ] Confirm dashboard financial labels match event settlement terminology.
+
+## Controlled Beta Hardening
+
+- [ ] Confirm My Auditor archived-record visibility matches the accepted role policy for Owner/Admin, Producer, and Viewer.
+- [ ] Confirm `/dashboard/contacts` and `/dashboard/venues` are either inaccessible to beta testers or clearly marked as future/scaffolded pages.
+- [ ] Run Dashboard, Events, Budget documents, Revenue & Settlement, Activity, Settings > Team, Recent Access Activity, and My Auditor on mobile and tablet-width viewports.
+- [ ] Confirm authenticated production browser console is clean while exercising document upload/download, archive/restore, Activity, Account Activity, and My Auditor.
+- [ ] Confirm Vercel production runtime logs have no `error` or `fatal` entries after the authenticated smoke pass.
+- [ ] Confirm beta-facing docs describe archive/restore behavior and do not present historical alpha wording as current product guidance.
