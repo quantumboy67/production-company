@@ -17,11 +17,12 @@ export default async function LoginPage({
       <Card className="w-full max-w-md">
         <CardHeader className="items-center text-center">
           <Image
-            src="/juniper-berry-logo.png"
-            alt="Juniper Berry Productions"
+            src="/juniper-berry-logo.png?v=sprig-20260607"
+            alt="Juniper Berry Productions logo"
             width={1016}
             height={290}
             priority
+            unoptimized
             className="h-auto w-full max-w-sm rounded-md"
           />
           <CardTitle className="sr-only">Juniper Berry Productions</CardTitle>

@@ -24,13 +24,14 @@ export function AppNav({ role }: { role: OrganizationRole }) {
 
   return (
     <aside className="flex min-h-screen w-full flex-col border-r bg-card/40 px-3 py-4 lg:w-64">
-      <Link href="/dashboard" className="mb-6 block px-2" aria-label="Juniper Berry Productions dashboard">
+      <Link href="/dashboard" className="mb-6 block px-2" aria-label="Juniper Berry Productions logo">
         <Image
-          src="/juniper-berry-logo.png"
-          alt="Juniper Berry Productions"
+          src="/juniper-berry-logo.png?v=sprig-20260607"
+          alt="Juniper Berry Productions logo"
           width={1016}
           height={290}
           priority
+          unoptimized
           className="h-auto w-full max-w-[13rem] rounded-md"
         />
       </Link>
