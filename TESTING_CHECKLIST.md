@@ -3,6 +3,12 @@
 ## Auth
 
 - [ ] Visit `/login` while logged out.
+- [ ] Confirm `/login` subtitle says `Event Command Center`.
+- [ ] Open `Request an invitation` from `/login`.
+- [ ] Submit the invitation request form with an invalid email and confirm validation prevents submission.
+- [ ] Submit a valid invitation request and confirm the neutral success message appears.
+- [ ] Submit a duplicate invitation request and confirm the response does not reveal whether the email exists or already requested access.
+- [ ] Confirm invitation requests do not create Supabase Auth users or automatically invite accounts.
 - [ ] Sign in with a valid Supabase Auth user.
 - [ ] Confirm logged-out access to `/dashboard` redirects to `/login`.
 - [ ] Confirm a signed-in user without a profile row redirects to `/onboarding`.
@@ -107,6 +113,21 @@
 - [ ] Confirm Recent Access Activity shows the latest 20 events with timestamp, user/email, event type, and description.
 - [ ] Confirm no passwords, temporary passwords, service keys, auth tokens, or secrets appear in `auth_activity.metadata`.
 - [ ] Confirm browser console has no app runtime errors while viewing Settings -> Team.
+
+## Invitation Requests Alpha
+
+- [ ] Apply the Invitation Requests Alpha migration and confirm `public.invite_requests` exists with RLS enabled.
+- [ ] Confirm anonymous login-page users can submit a request through the server action.
+- [ ] Confirm anonymous users cannot read invitation requests.
+- [ ] Confirm Owner/Admin sees pending requests in Settings -> Team.
+- [ ] Confirm Owner/Admin can mark an invitation request reviewed.
+- [ ] Confirm Owner/Admin can mark an invitation request declined.
+- [ ] Confirm Owner/Admin can mark an invitation request spam.
+- [ ] Confirm invitation request review actions create `invite_request.reviewed`, `invite_request.declined`, or `invite_request.marked_spam` audit rows.
+- [ ] Confirm Producer/Viewer cannot access Settings -> Team or invitation requests.
+- [ ] Confirm removed/disabled users cannot access invitation requests.
+- [ ] Confirm configured Resend notification email arrives, or if email env vars are missing, the request still saves and the user still sees the neutral success message.
+- [ ] Confirm no Resend API key, service-role key, passwords, temporary passwords, tokens, or raw secrets appear in client code, browser console, audit rows, or logs.
 
 ## Dashboard
 

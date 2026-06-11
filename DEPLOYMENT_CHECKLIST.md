@@ -9,6 +9,8 @@
 - [ ] Confirm authenticated users can select only active-organization audit rows and cannot directly insert/update/delete audit rows.
 - [ ] Apply `202606070900_deletion_safety_restore_alpha.sql` before verifying deletion safety in production.
 - [ ] Apply Receipts & Invoices Alpha migration and confirm `public.budget_item_documents` exists.
+- [ ] Apply Invitation Requests Alpha migration and confirm `public.invite_requests` exists with RLS enabled.
+- [ ] Confirm Owner/Admin can read/update invitation requests and Producer/Viewer cannot.
 - [ ] Confirm private Storage bucket `financial-documents` exists, is not public, uses a 10 MB limit, and allows PDF, PNG, JPG/JPEG, WEBP, CSV, and XLSX.
 - [ ] Smoke test archive/restore for one event, one budget item, one revenue item, and one ticket tier as Owner/Admin.
 - [ ] Smoke test budget item document upload, signed download, status change, archive, restore, and Activity rows as Owner/Admin.
@@ -33,6 +35,8 @@
 - [ ] Confirm no service role key appears in browser/client code or logs.
 - [ ] Set the same public Supabase variables in Vercel Project Settings.
 - [ ] Set `SUPABASE_SERVICE_ROLE_KEY` in Vercel Project Settings for Preview/Production before testing Team invites.
+- [ ] Optional: set `INVITE_REQUEST_NOTIFY_EMAIL`, `INVITE_REQUEST_FROM_EMAIL`, and `RESEND_API_KEY` in Vercel to send invitation request notifications.
+- [ ] Confirm `RESEND_API_KEY` is never prefixed with `NEXT_PUBLIC_`.
 
 ## Vercel
 
@@ -45,6 +49,8 @@
 - [ ] Smoke test preview URL.
 - [ ] In the deployed app, make one event or budget change and confirm the event `Activity` tab shows the audit row.
 - [ ] In the deployed app, upload one small test receipt/invoice and confirm the event `Activity` tab shows the financial document audit row.
+- [ ] Submit one login-page invitation request and confirm it appears in Settings > Team for Owner/Admin.
+- [ ] If invitation request email env vars are configured, confirm the notification email arrives.
 - [ ] Confirm no signed URLs, file contents, service-role keys, passwords, temporary passwords, tokens, or raw secrets appear in browser console, audit rows, or Vercel logs.
 - [ ] Promote to production when preview is clean.
 

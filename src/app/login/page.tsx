@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { signIn } from "@/app/actions";
+import { RequestInvitationForm } from "@/components/app/request-invitation-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,7 +27,7 @@ export default async function LoginPage({
             className="h-auto w-full max-w-sm rounded-md"
           />
           <CardTitle className="sr-only">Juniper Berry Productions</CardTitle>
-          <CardDescription>Event production command center</CardDescription>
+          <CardDescription>Event Command Center</CardDescription>
         </CardHeader>
         <CardContent>
           {error ? (
@@ -45,6 +46,7 @@ export default async function LoginPage({
             </div>
             <Button type="submit" className="w-full">Sign in</Button>
           </form>
+          <RequestInvitationForm />
         </CardContent>
       </Card>
     </main>

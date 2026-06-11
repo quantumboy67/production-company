@@ -3,6 +3,7 @@ import {
   updateMemberRole,
 } from "@/app/actions";
 import { redirect } from "next/navigation";
+import { InvitationRequests } from "@/components/app/invitation-requests";
 import { MemberRemoveForm } from "@/components/app/member-remove-form";
 import { RecentAccessActivity } from "@/components/app/recent-access-activity";
 import { TeamInviteForm } from "@/components/app/team-invite-form";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { listInviteRequests } from "@/lib/data/invite-requests";
 import { listTeamMembers, type TeamMember } from "@/lib/data/team";
 import { listRecentAuthActivity } from "@/lib/data/auth-activity";
 import { prettyDate, titleize } from "@/lib/format";
@@ -28,9 +30,10 @@ export default async function TeamPage({
     redirect("/dashboard");
   }
 
-  const [members, recentAccessActivity, params] = await Promise.all([
+  const [members, recentAccessActivity, inviteRequests, params] = await Promise.all([
     listTeamMembers(),
     listRecentAuthActivity(),
+    listInviteRequests(),
     searchParams,
   ]);
   const activeMembers = members.filter((member) => member.status === "active");
@@ -91,6 +94,8 @@ export default async function TeamPage({
           </div>
         </details>
       ) : null}
+
+      <InvitationRequests requests={inviteRequests} />
 
       <RecentAccessActivity activity={recentAccessActivity} />
     </div>

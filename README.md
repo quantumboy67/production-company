@@ -33,6 +33,7 @@ The migration creates:
 - Access Control Alpha membership roles and RLS policies
 - Audit Trail Alpha `audit_log` table, indexes, and append-only RLS posture
 - Receipts & Invoices Alpha `financial-documents` private Storage bucket and budget item document metadata
+- Invitation Requests Alpha `invite_requests` table for login-page access requests
 
 ## First User And Organization
 
@@ -104,6 +105,16 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
 Do not put a Supabase service role key in any `NEXT_PUBLIC_` variable. Never log it, render it, or import the admin client into client components.
+
+Optional invitation request email notifications use server-only variables. Leave these blank to store login-page requests without sending email:
+
+```bash
+INVITE_REQUEST_NOTIFY_EMAIL=owner@example.com
+INVITE_REQUEST_FROM_EMAIL=Juniper Berry Productions <noreply@example.com>
+RESEND_API_KEY=your-resend-api-key
+```
+
+Do not put email provider keys in any `NEXT_PUBLIC_` variable.
 
 4. Start the app:
 
@@ -257,3 +268,17 @@ Login activity is recorded when a user successfully submits the login form and t
 Owner/Admin users can view the latest account activity in Settings -> Team. Producer/Viewer users do not have access to the account activity table or the Settings -> Team page.
 
 Account activity records never include passwords, temporary passwords, auth tokens, service-role keys, or raw secret values. Notification delivery is intentionally not implemented yet. Future options include Owner/Admin email notifications, a daily digest, Slack/Discord webhooks, and SMS later.
+
+## Invitation Requests Alpha
+
+The app remains invite-only. The login page includes a `Request an invitation` form for people who do not have accounts. Submitting the form creates an `invite_requests` row for Owner/Admin review; it does not create an Auth user, does not send a Supabase invite, and does not reveal whether the email already exists.
+
+Owner/Admin users can review pending requests in Settings -> Team and mark them reviewed, declined, or spam. Producer and Viewer users cannot access invitation requests.
+
+Public login-page requests use an app-level request model with `organization_id` left blank because the requester is not signed in and may not know which organization should approve them. In the current controlled-beta deployment, Owner/Admin users review those pending app-level requests from Settings -> Team.
+
+Invitation request notification email is optional. If `INVITE_REQUEST_NOTIFY_EMAIL`, `INVITE_REQUEST_FROM_EMAIL`, and `RESEND_API_KEY` are configured, the server action sends a Resend email to the configured admin address. If any variable is missing or email delivery fails, the request is still stored and the requester sees the same neutral success message.
+
+Invitation request submissions are represented by the stored request row and a minimal server log line named `invite_request.submitted`. Owner/Admin review actions are written to `audit_log` as `invite_request.reviewed`, `invite_request.declined`, or `invite_request.marked_spam`.
+
+Invitation requests never log passwords, temporary passwords, tokens, service-role keys, or email API keys.

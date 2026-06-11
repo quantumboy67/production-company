@@ -1,6 +1,8 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logAuthActivity } from "@/lib/auth-activity";
@@ -114,6 +116,19 @@ const inviteUserSchema = z.object({
   confirm_admin: z.string().optional(),
 });
 
+const inviteRequestSchema = z.object({
+  full_name: z.string().trim().min(2, "Full name is required").max(120, "Full name is too long"),
+  email: z.string().trim().email("A valid email is required").max(254, "Email is too long"),
+  company: z.string().trim().max(160, "Company / affiliation is too long").optional(),
+  message: z.string().trim().max(1000, "Message must be 1,000 characters or less").optional(),
+  website: z.string().trim().optional(),
+});
+
+const inviteRequestStatusSchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum(["reviewed", "declined", "spam"]),
+});
+
 const memberIdSchema = z.object({
   member_id: z.string().uuid(),
 });
@@ -215,6 +230,78 @@ export async function signIn(formData: FormData) {
   }
 
   redirect("/dashboard");
+}
+
+export type InviteRequestFormState = {
+  ok: boolean;
+  message: string | null;
+  error: string | null;
+};
+
+const inviteRequestSuccessMessage = "Thanks. Your request has been received. If approved, an administrator will send you an invitation.";
+
+export async function submitInviteRequest(
+  _previousState: InviteRequestFormState,
+  formData: FormData,
+): Promise<InviteRequestFormState> {
+  const parsed = inviteRequestSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: null,
+      error: parsed.error.issues[0]?.message ?? "Please check your request and try again.",
+    };
+  }
+
+  if (parsed.data.website) {
+    return { ok: true, message: inviteRequestSuccessMessage, error: null };
+  }
+
+  const email = parsed.data.email.toLowerCase();
+  const admin = createAdminClient();
+
+  try {
+    const { data: existing } = await admin
+      .from("invite_requests")
+      .select("id")
+      .eq("email", email)
+      .eq("status", "pending")
+      .limit(1);
+
+    if (!existing || existing.length === 0) {
+      const requestHeaders = await headers();
+      const ipAddress = getClientIp(requestHeaders);
+      const userAgent = requestHeaders.get("user-agent")?.slice(0, 500) ?? null;
+      const { data: request, error } = await admin
+        .from("invite_requests")
+        .insert({
+          full_name: parsed.data.full_name,
+          email,
+          company: emptyToNull(parsed.data.company),
+          message: emptyToNull(parsed.data.message),
+          status: "pending",
+          ip_hash: ipAddress ? hashValue(ipAddress) : null,
+          user_agent: userAgent,
+        })
+        .select("id, full_name, email, company, message, created_at")
+        .single();
+
+      if (error) {
+        console.warn("Invite request insert failed", { error: error.message });
+        return { ok: true, message: inviteRequestSuccessMessage, error: null };
+      }
+
+      console.info("invite_request.submitted", { requestId: request.id });
+      await maybeSendInviteRequestEmail(request);
+    }
+  } catch (error) {
+    console.warn("Invite request submit failed", {
+      error: error instanceof Error ? error.message : "Unknown invite request error",
+    });
+  }
+
+  return { ok: true, message: inviteRequestSuccessMessage, error: null };
 }
 
 export async function signOut() {
@@ -1834,6 +1921,67 @@ export async function forceMemberPasswordChange(formData: FormData) {
   redirect("/dashboard/settings/team?success=Password change required on next login");
 }
 
+export async function updateInviteRequestStatus(formData: FormData) {
+  const membership = await requireCanManageUsers();
+  const parsed = inviteRequestStatusSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    redirect("/dashboard/settings/team?error=Invalid invitation request update.");
+  }
+
+  const supabase = await createClient();
+  const { data: before, error: beforeError } = await supabase
+    .from("invite_requests")
+    .select("id, full_name, email, company, message, status, created_at")
+    .eq("id", parsed.data.id)
+    .maybeSingle();
+
+  if (beforeError || !before) {
+    redirect("/dashboard/settings/team?error=Invitation request not found.");
+  }
+
+  const { data: after, error } = await supabase
+    .from("invite_requests")
+    .update({
+      status: parsed.data.status,
+      reviewed_by: membership.profile_id,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq("id", parsed.data.id)
+    .select("id, full_name, email, company, message, status, created_at, reviewed_at")
+    .single();
+
+  if (error) {
+    redirect(`/dashboard/settings/team?error=${encodeURIComponent(error.message)}`);
+  }
+
+  const action = parsed.data.status === "spam"
+    ? "invite_request.marked_spam"
+    : parsed.data.status === "declined"
+      ? "invite_request.declined"
+      : "invite_request.reviewed";
+
+  await logAuditEvent({
+    organizationId: membership.organization_id,
+    actorProfile: membership,
+    entityType: "invite_request",
+    entityId: parsed.data.id,
+    action,
+    summary: `${formatInviteRequestStatus(parsed.data.status)} invitation request from ${before.email}.`,
+    beforeData: before,
+    afterData: after,
+    metadata: {
+      invite_request_id: parsed.data.id,
+      email: before.email,
+      previous_status: before.status,
+      new_status: parsed.data.status,
+    },
+  });
+
+  revalidatePath("/dashboard/settings/team");
+  redirect(`/dashboard/settings/team?success=${encodeURIComponent(`Invitation request marked ${parsed.data.status}.`)}`);
+}
+
 export async function removeMember(formData: FormData) {
   const membership = await requireCanManageUsers();
   const parsed = removeMemberSchema.safeParse(Object.fromEntries(formData));
@@ -2071,6 +2219,81 @@ function slugify(value: string) {
     .replace(/(^-|-$)/g, "");
 
   return `${base || "organization"}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function emptyToNull(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function hashValue(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function getClientIp(headerStore: Headers) {
+  const forwardedFor = headerStore.get("x-forwarded-for");
+  if (forwardedFor) return forwardedFor.split(",")[0]?.trim() ?? null;
+  return headerStore.get("x-real-ip");
+}
+
+function formatInviteRequestStatus(status: "reviewed" | "declined" | "spam") {
+  if (status === "spam") return "Marked spam";
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+async function maybeSendInviteRequestEmail(request: {
+  id: string;
+  full_name: string;
+  email: string;
+  company: string | null;
+  message: string | null;
+  created_at: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = process.env.INVITE_REQUEST_NOTIFY_EMAIL;
+  const from = process.env.INVITE_REQUEST_FROM_EMAIL;
+
+  if (!apiKey || !to || !from) return;
+
+  const lines = [
+    "A new Juniper Berry Productions invitation request was submitted.",
+    "",
+    `Name: ${request.full_name}`,
+    `Email: ${request.email}`,
+    `Company / affiliation: ${request.company ?? "Not provided"}`,
+    `Message: ${request.message ?? "Not provided"}`,
+    `Submitted: ${request.created_at}`,
+    "",
+    "Review it in Settings -> Team.",
+  ];
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        subject: "Juniper Berry Productions invitation request",
+        text: lines.join("\n"),
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn("Invite request email failed", {
+        requestId: request.id,
+        status: response.status,
+      });
+    }
+  } catch (error) {
+    console.warn("Invite request email failed", {
+      requestId: request.id,
+      error: error instanceof Error ? error.message : "Unknown email error",
+    });
+  }
 }
 
 async function createDemoEventForOrganization(organizationId: string) {

@@ -1,0 +1,755 @@
+--- /dev/null	2026-06-11 15:51:39
++++ /Users/azapp/CodexProjects/production-company/supabase/migrations/202606071700_invite_requests_alpha.sql	2026-06-11 15:31:37
+@@ -0,0 +1,80 @@
++create table if not exists public.invite_requests (
++  id uuid primary key default gen_random_uuid(),
++  organization_id uuid references public.organizations(id) on delete set null,
++  full_name text not null,
++  email text not null,
++  company text,
++  message text,
++  status text not null default 'pending' check (status in ('pending', 'reviewed', 'invited', 'declined', 'spam')),
++  reviewed_by uuid references public.profiles(id) on delete set null,
++  reviewed_at timestamptz,
++  notes text,
++  ip_hash text,
++  user_agent text,
++  created_at timestamptz not null default now()
++);
++
++create index if not exists invite_requests_status_created_idx
++  on public.invite_requests (status, created_at desc);
++
++create index if not exists invite_requests_email_status_idx
++  on public.invite_requests (lower(email), status);
++
++create index if not exists invite_requests_organization_status_idx
++  on public.invite_requests (organization_id, status, created_at desc);
++
++alter table public.invite_requests enable row level security;
++
++drop policy if exists "owners and admins can read invite requests" on public.invite_requests;
++create policy "owners and admins can read invite requests"
++on public.invite_requests for select
++to authenticated
++using (
++  exists (
++    select 1
++    from public.organization_members member
++    where member.profile_id = auth.uid()
++      and member.status = 'active'
++      and member.role in ('owner', 'admin')
++      and (
++        public.invite_requests.organization_id is null
++        or member.organization_id = public.invite_requests.organization_id
++      )
++  )
++);
++
++drop policy if exists "owners and admins can update invite requests" on public.invite_requests;
++create policy "owners and admins can update invite requests"
++on public.invite_requests for update
++to authenticated
++using (
++  exists (
++    select 1
++    from public.organization_members member
++    where member.profile_id = auth.uid()
++      and member.status = 'active'
++      and member.role in ('owner', 'admin')
++      and (
++        public.invite_requests.organization_id is null
++        or member.organization_id = public.invite_requests.organization_id
++      )
++  )
++)
++with check (
++  exists (
++    select 1
++    from public.organization_members member
++    where member.profile_id = auth.uid()
++      and member.status = 'active'
++      and member.role in ('owner', 'admin')
++      and (
++        public.invite_requests.organization_id is null
++        or member.organization_id = public.invite_requests.organization_id
++      )
++  )
++);
++
++revoke all on public.invite_requests from anon;
++revoke all on public.invite_requests from authenticated;
++grant select, update on public.invite_requests to authenticated;
++grant select, insert, update, delete on public.invite_requests to service_role;
+--- /Users/azapp/CodexProjects/_github-comparison/production-company/src/app/actions.ts	2026-06-11 15:46:56
++++ /Users/azapp/CodexProjects/production-company/src/app/actions.ts	2026-06-11 15:31:37
+@@ -1,6 +1,8 @@
+ "use server";
+ 
++import { createHash } from "node:crypto";
+ import { revalidatePath } from "next/cache";
++import { headers } from "next/headers";
+ import { redirect } from "next/navigation";
+ import { z } from "zod";
+ import { logAuthActivity } from "@/lib/auth-activity";
+@@ -114,6 +116,19 @@
+   confirm_admin: z.string().optional(),
+ });
+ 
++const inviteRequestSchema = z.object({
++  full_name: z.string().trim().min(2, "Full name is required").max(120, "Full name is too long"),
++  email: z.string().trim().email("A valid email is required").max(254, "Email is too long"),
++  company: z.string().trim().max(160, "Company / affiliation is too long").optional(),
++  message: z.string().trim().max(1000, "Message must be 1,000 characters or less").optional(),
++  website: z.string().trim().optional(),
++});
++
++const inviteRequestStatusSchema = z.object({
++  id: z.string().uuid(),
++  status: z.enum(["reviewed", "declined", "spam"]),
++});
++
+ const memberIdSchema = z.object({
+   member_id: z.string().uuid(),
+ });
+@@ -217,6 +232,78 @@
+   redirect("/dashboard");
+ }
+ 
++export type InviteRequestFormState = {
++  ok: boolean;
++  message: string | null;
++  error: string | null;
++};
++
++const inviteRequestSuccessMessage = "Thanks. Your request has been received. If approved, an administrator will send you an invitation.";
++
++export async function submitInviteRequest(
++  _previousState: InviteRequestFormState,
++  formData: FormData,
++): Promise<InviteRequestFormState> {
++  const parsed = inviteRequestSchema.safeParse(Object.fromEntries(formData));
++
++  if (!parsed.success) {
++    return {
++      ok: false,
++      message: null,
++      error: parsed.error.issues[0]?.message ?? "Please check your request and try again.",
++    };
++  }
++
++  if (parsed.data.website) {
++    return { ok: true, message: inviteRequestSuccessMessage, error: null };
++  }
++
++  const email = parsed.data.email.toLowerCase();
++  const admin = createAdminClient();
++
++  try {
++    const { data: existing } = await admin
++      .from("invite_requests")
++      .select("id")
++      .eq("email", email)
++      .eq("status", "pending")
++      .limit(1);
++
++    if (!existing || existing.length === 0) {
++      const requestHeaders = await headers();
++      const ipAddress = getClientIp(requestHeaders);
++      const userAgent = requestHeaders.get("user-agent")?.slice(0, 500) ?? null;
++      const { data: request, error } = await admin
++        .from("invite_requests")
++        .insert({
++          full_name: parsed.data.full_name,
++          email,
++          company: emptyToNull(parsed.data.company),
++          message: emptyToNull(parsed.data.message),
++          status: "pending",
++          ip_hash: ipAddress ? hashValue(ipAddress) : null,
++          user_agent: userAgent,
++        })
++        .select("id, full_name, email, company, message, created_at")
++        .single();
++
++      if (error) {
++        console.warn("Invite request insert failed", { error: error.message });
++        return { ok: true, message: inviteRequestSuccessMessage, error: null };
++      }
++
++      console.info("invite_request.submitted", { requestId: request.id });
++      await maybeSendInviteRequestEmail(request);
++    }
++  } catch (error) {
++    console.warn("Invite request submit failed", {
++      error: error instanceof Error ? error.message : "Unknown invite request error",
++    });
++  }
++
++  return { ok: true, message: inviteRequestSuccessMessage, error: null };
++}
++
+ export async function signOut() {
+   const supabase = await createClient();
+   const [membership, user] = await Promise.all([getMembership(), getUser()]);
+@@ -1834,6 +1921,67 @@
+   redirect("/dashboard/settings/team?success=Password change required on next login");
+ }
+ 
++export async function updateInviteRequestStatus(formData: FormData) {
++  const membership = await requireCanManageUsers();
++  const parsed = inviteRequestStatusSchema.safeParse(Object.fromEntries(formData));
++
++  if (!parsed.success) {
++    redirect("/dashboard/settings/team?error=Invalid invitation request update.");
++  }
++
++  const supabase = await createClient();
++  const { data: before, error: beforeError } = await supabase
++    .from("invite_requests")
++    .select("id, full_name, email, company, message, status, created_at")
++    .eq("id", parsed.data.id)
++    .maybeSingle();
++
++  if (beforeError || !before) {
++    redirect("/dashboard/settings/team?error=Invitation request not found.");
++  }
++
++  const { data: after, error } = await supabase
++    .from("invite_requests")
++    .update({
++      status: parsed.data.status,
++      reviewed_by: membership.profile_id,
++      reviewed_at: new Date().toISOString(),
++    })
++    .eq("id", parsed.data.id)
++    .select("id, full_name, email, company, message, status, created_at, reviewed_at")
++    .single();
++
++  if (error) {
++    redirect(`/dashboard/settings/team?error=${encodeURIComponent(error.message)}`);
++  }
++
++  const action = parsed.data.status === "spam"
++    ? "invite_request.marked_spam"
++    : parsed.data.status === "declined"
++      ? "invite_request.declined"
++      : "invite_request.reviewed";
++
++  await logAuditEvent({
++    organizationId: membership.organization_id,
++    actorProfile: membership,
++    entityType: "invite_request",
++    entityId: parsed.data.id,
++    action,
++    summary: `${formatInviteRequestStatus(parsed.data.status)} invitation request from ${before.email}.`,
++    beforeData: before,
++    afterData: after,
++    metadata: {
++      invite_request_id: parsed.data.id,
++      email: before.email,
++      previous_status: before.status,
++      new_status: parsed.data.status,
++    },
++  });
++
++  revalidatePath("/dashboard/settings/team");
++  redirect(`/dashboard/settings/team?success=${encodeURIComponent(`Invitation request marked ${parsed.data.status}.`)}`);
++}
++
+ export async function removeMember(formData: FormData) {
+   const membership = await requireCanManageUsers();
+   const parsed = removeMemberSchema.safeParse(Object.fromEntries(formData));
+@@ -2071,6 +2219,81 @@
+     .replace(/(^-|-$)/g, "");
+ 
+   return `${base || "organization"}-${crypto.randomUUID().slice(0, 8)}`;
++}
++
++function emptyToNull(value: string | undefined) {
++  const trimmed = value?.trim();
++  return trimmed ? trimmed : null;
++}
++
++function hashValue(value: string) {
++  return createHash("sha256").update(value).digest("hex");
++}
++
++function getClientIp(headerStore: Headers) {
++  const forwardedFor = headerStore.get("x-forwarded-for");
++  if (forwardedFor) return forwardedFor.split(",")[0]?.trim() ?? null;
++  return headerStore.get("x-real-ip");
++}
++
++function formatInviteRequestStatus(status: "reviewed" | "declined" | "spam") {
++  if (status === "spam") return "Marked spam";
++  return status.charAt(0).toUpperCase() + status.slice(1);
++}
++
++async function maybeSendInviteRequestEmail(request: {
++  id: string;
++  full_name: string;
++  email: string;
++  company: string | null;
++  message: string | null;
++  created_at: string;
++}) {
++  const apiKey = process.env.RESEND_API_KEY;
++  const to = process.env.INVITE_REQUEST_NOTIFY_EMAIL;
++  const from = process.env.INVITE_REQUEST_FROM_EMAIL;
++
++  if (!apiKey || !to || !from) return;
++
++  const lines = [
++    "A new Juniper Berry Productions invitation request was submitted.",
++    "",
++    `Name: ${request.full_name}`,
++    `Email: ${request.email}`,
++    `Company / affiliation: ${request.company ?? "Not provided"}`,
++    `Message: ${request.message ?? "Not provided"}`,
++    `Submitted: ${request.created_at}`,
++    "",
++    "Review it in Settings -> Team.",
++  ];
++
++  try {
++    const response = await fetch("https://api.resend.com/emails", {
++      method: "POST",
++      headers: {
++        Authorization: `Bearer ${apiKey}`,
++        "Content-Type": "application/json",
++      },
++      body: JSON.stringify({
++        from,
++        to,
++        subject: "Juniper Berry Productions invitation request",
++        text: lines.join("\n"),
++      }),
++    });
++
++    if (!response.ok) {
++      console.warn("Invite request email failed", {
++        requestId: request.id,
++        status: response.status,
++      });
++    }
++  } catch (error) {
++    console.warn("Invite request email failed", {
++      requestId: request.id,
++      error: error instanceof Error ? error.message : "Unknown email error",
++    });
++  }
+ }
+ 
+ async function createDemoEventForOrganization(organizationId: string) {
+--- /Users/azapp/CodexProjects/_github-comparison/production-company/src/app/login/page.tsx	2026-06-11 15:46:56
++++ /Users/azapp/CodexProjects/production-company/src/app/login/page.tsx	2026-06-11 15:31:37
+@@ -1,5 +1,6 @@
+ import Image from "next/image";
+ import { signIn } from "@/app/actions";
++import { RequestInvitationForm } from "@/components/app/request-invitation-form";
+ import { Button } from "@/components/ui/button";
+ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+ import { Input } from "@/components/ui/input";
+@@ -26,7 +27,7 @@
+             className="h-auto w-full max-w-sm rounded-md"
+           />
+           <CardTitle className="sr-only">Juniper Berry Productions</CardTitle>
+-          <CardDescription>Event production command center</CardDescription>
++          <CardDescription>Event Command Center</CardDescription>
+         </CardHeader>
+         <CardContent>
+           {error ? (
+@@ -45,6 +46,7 @@
+             </div>
+             <Button type="submit" className="w-full">Sign in</Button>
+           </form>
++          <RequestInvitationForm />
+         </CardContent>
+       </Card>
+     </main>
+--- /Users/azapp/CodexProjects/_github-comparison/production-company/src/app/dashboard/settings/team/page.tsx	2026-06-11 15:46:56
++++ /Users/azapp/CodexProjects/production-company/src/app/dashboard/settings/team/page.tsx	2026-06-11 15:31:37
+@@ -3,6 +3,7 @@
+   updateMemberRole,
+ } from "@/app/actions";
+ import { redirect } from "next/navigation";
++import { InvitationRequests } from "@/components/app/invitation-requests";
+ import { MemberRemoveForm } from "@/components/app/member-remove-form";
+ import { RecentAccessActivity } from "@/components/app/recent-access-activity";
+ import { TeamInviteForm } from "@/components/app/team-invite-form";
+@@ -10,6 +11,7 @@
+ import { Button } from "@/components/ui/button";
+ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
++import { listInviteRequests } from "@/lib/data/invite-requests";
+ import { listTeamMembers, type TeamMember } from "@/lib/data/team";
+ import { listRecentAuthActivity } from "@/lib/data/auth-activity";
+ import { prettyDate, titleize } from "@/lib/format";
+@@ -28,9 +30,10 @@
+     redirect("/dashboard");
+   }
+ 
+-  const [members, recentAccessActivity, params] = await Promise.all([
++  const [members, recentAccessActivity, inviteRequests, params] = await Promise.all([
+     listTeamMembers(),
+     listRecentAuthActivity(),
++    listInviteRequests(),
+     searchParams,
+   ]);
+   const activeMembers = members.filter((member) => member.status === "active");
+@@ -91,6 +94,8 @@
+           </div>
+         </details>
+       ) : null}
++
++      <InvitationRequests requests={inviteRequests} />
+ 
+       <RecentAccessActivity activity={recentAccessActivity} />
+     </div>
+--- /dev/null	2026-06-11 15:51:39
++++ /Users/azapp/CodexProjects/production-company/src/components/app/invitation-requests.tsx	2026-06-11 15:31:37
+@@ -0,0 +1,90 @@
++import { updateInviteRequestStatus } from "@/app/actions";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
++import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
++import { prettyDate, titleize } from "@/lib/format";
++import type { InviteRequestRecord, InviteRequestStatus } from "@/lib/types";
++
++const reviewStatuses: Array<Exclude<InviteRequestStatus, "pending" | "invited">> = ["reviewed", "declined", "spam"];
++
++export function InvitationRequests({ requests }: { requests: InviteRequestRecord[] }) {
++  const pendingRequests = requests.filter((request) => request.status === "pending");
++  const recentReviewed = requests.filter((request) => request.status !== "pending").slice(0, 5);
++
++  return (
++    <Card data-testid="invitation-requests">
++      <CardHeader>
++        <CardTitle>Invitation Requests</CardTitle>
++        <p className="text-sm text-muted-foreground">
++          Requests from people who reached the login page. These do not create accounts or send invitations automatically.
++        </p>
++      </CardHeader>
++      <CardContent className="space-y-4">
++        {pendingRequests.length === 0 ? (
++          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
++            No pending invitation requests.
++          </p>
++        ) : (
++          <InviteRequestTable requests={pendingRequests} showActions />
++        )}
++
++        {recentReviewed.length > 0 ? (
++          <details className="rounded-md border bg-muted/10 p-3">
++            <summary className="cursor-pointer text-sm font-medium">Recent reviewed requests ({recentReviewed.length})</summary>
++            <div className="mt-3">
++              <InviteRequestTable requests={recentReviewed} showActions={false} />
++            </div>
++          </details>
++        ) : null}
++      </CardContent>
++    </Card>
++  );
++}
++
++function InviteRequestTable({ requests, showActions }: { requests: InviteRequestRecord[]; showActions: boolean }) {
++  return (
++    <div className="overflow-x-auto">
++      <Table>
++        <THead>
++          <TR>
++            <TH>Name</TH>
++            <TH>Email</TH>
++            <TH>Company</TH>
++            <TH>Message</TH>
++            <TH>Created</TH>
++            <TH>Status</TH>
++            {showActions ? <TH className="text-right">Actions</TH> : null}
++          </TR>
++        </THead>
++        <TBody>
++          {requests.map((request) => (
++            <TR key={request.id}>
++              <TD className="font-medium">{request.full_name}</TD>
++              <TD>{request.email}</TD>
++              <TD>{request.company ?? "Not provided"}</TD>
++              <TD className="max-w-xs whitespace-normal text-sm text-muted-foreground">{request.message ?? "Not provided"}</TD>
++              <TD>{prettyDate(request.created_at.slice(0, 10))}</TD>
++              <TD><Badge>{titleize(request.status)}</Badge></TD>
++              {showActions ? (
++                <TD>
++                  <div className="flex flex-wrap justify-end gap-2">
++                    {reviewStatuses.map((status) => (
++                      <form key={status} action={updateInviteRequestStatus}>
++                        <input type="hidden" name="id" value={request.id} />
++                        <input type="hidden" name="status" value={status} />
++                        <Button type="submit" variant={status === "spam" ? "destructive" : "outline"} size="sm">
++                          {status === "spam" ? "Spam" : titleize(status)}
++                        </Button>
++                      </form>
++                    ))}
++                  </div>
++                </TD>
++              ) : null}
++            </TR>
++          ))}
++        </TBody>
++      </Table>
++    </div>
++  );
++}
+--- /dev/null	2026-06-11 15:51:39
++++ /Users/azapp/CodexProjects/production-company/src/components/app/request-invitation-form.tsx	2026-06-11 15:31:37
+@@ -0,0 +1,81 @@
++"use client";
++
++import { useActionState, useState } from "react";
++import { useFormStatus } from "react-dom";
++import { submitInviteRequest, type InviteRequestFormState } from "@/app/actions";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Label } from "@/components/ui/label";
++import { Textarea } from "@/components/ui/textarea";
++
++const initialState: InviteRequestFormState = {
++  ok: false,
++  message: null,
++  error: null,
++};
++
++export function RequestInvitationForm() {
++  const [isOpen, setIsOpen] = useState(false);
++  const [state, formAction] = useActionState(submitInviteRequest, initialState);
++
++  return (
++    <div className="mt-5 border-t pt-4">
++      {!isOpen ? (
++        <Button type="button" variant="ghost" className="w-full" onClick={() => setIsOpen(true)}>
++          Request an invitation
++        </Button>
++      ) : (
++        <form action={formAction} className="space-y-3" data-testid="invite-request-form">
++          <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
++          <Field label="Full name">
++            <Input name="full_name" autoComplete="name" required />
++          </Field>
++          <Field label="Email">
++            <Input name="email" type="email" autoComplete="email" required />
++          </Field>
++          <Field label="Company / affiliation">
++            <Input name="company" autoComplete="organization" />
++          </Field>
++          <Field label="Reason / message">
++            <Textarea name="message" rows={3} maxLength={1000} />
++          </Field>
++          {state.error ? (
++            <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
++              {state.error}
++            </p>
++          ) : null}
++          {state.message ? (
++            <p className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground" data-testid="invite-request-success">
++              {state.message}
++            </p>
++          ) : null}
++          <div className="flex justify-end gap-2">
++            <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
++              Cancel
++            </Button>
++            <InviteRequestSubmitButton />
++          </div>
++        </form>
++      )}
++    </div>
++  );
++}
++
++function Field({ label, children }: { label: string; children: React.ReactNode }) {
++  return (
++    <div>
++      <Label className="mb-1 block text-xs text-muted-foreground">{label}</Label>
++      {children}
++    </div>
++  );
++}
++
++function InviteRequestSubmitButton() {
++  const { pending } = useFormStatus();
++
++  return (
++    <Button type="submit" disabled={pending}>
++      {pending ? "Sending..." : "Send request"}
++    </Button>
++  );
++}
+--- /dev/null	2026-06-11 15:51:39
++++ /Users/azapp/CodexProjects/production-company/src/lib/data/invite-requests.ts	2026-06-11 15:31:37
+@@ -0,0 +1,19 @@
++import { createClient } from "@/lib/supabase/server";
++import { requireCanManageUsers } from "@/lib/supabase/auth";
++import type { InviteRequestRecord } from "@/lib/types";
++
++export async function listInviteRequests(limit = 20): Promise<InviteRequestRecord[]> {
++  await requireCanManageUsers();
++  const supabase = await createClient();
++  const { data, error } = await supabase
++    .from("invite_requests")
++    .select("id, organization_id, full_name, email, company, message, status, reviewed_by, reviewed_at, notes, created_at")
++    .order("created_at", { ascending: false })
++    .limit(limit);
++
++  if (error) {
++    throw new Error(error.message);
++  }
++
++  return (data ?? []) as InviteRequestRecord[];
++}
+--- /Users/azapp/CodexProjects/_github-comparison/production-company/src/lib/types.ts	2026-06-11 15:46:56
++++ /Users/azapp/CodexProjects/production-company/src/lib/types.ts	2026-06-11 15:31:37
+@@ -36,6 +36,22 @@
+   created_at: string;
+ };
+ 
++export type InviteRequestStatus = "pending" | "reviewed" | "invited" | "declined" | "spam";
++
++export type InviteRequestRecord = {
++  id: string;
++  organization_id: string | null;
++  full_name: string;
++  email: string;
++  company: string | null;
++  message: string | null;
++  status: InviteRequestStatus;
++  reviewed_by: string | null;
++  reviewed_at: string | null;
++  notes: string | null;
++  created_at: string;
++};
++
+ export type EventRecord = {
+   id: string;
+   organization_id: string;
+--- /Users/azapp/CodexProjects/_github-comparison/production-company/.env.example	2026-06-11 15:46:56
++++ /Users/azapp/CodexProjects/production-company/.env.example	2026-06-11 15:31:37
+@@ -7,3 +7,9 @@
+ # Required for server-only invite/user management.
+ # Never expose service role keys in NEXT_PUBLIC variables.
+ SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
++
++# Optional server-only invitation request email notifications.
++# Leave blank to store requests without sending email.
++INVITE_REQUEST_NOTIFY_EMAIL=
++INVITE_REQUEST_FROM_EMAIL=
++RESEND_API_KEY=
+--- /Users/azapp/CodexProjects/_github-comparison/production-company/README.md	2026-06-11 15:46:56
++++ /Users/azapp/CodexProjects/production-company/README.md	2026-06-11 15:31:37
+@@ -33,6 +33,7 @@
+ - Access Control Alpha membership roles and RLS policies
+ - Audit Trail Alpha `audit_log` table, indexes, and append-only RLS posture
+ - Receipts & Invoices Alpha `financial-documents` private Storage bucket and budget item document metadata
++- Invitation Requests Alpha `invite_requests` table for login-page access requests
+ 
+ ## First User And Organization
+ 
+@@ -105,6 +106,16 @@
+ 
+ Do not put a Supabase service role key in any `NEXT_PUBLIC_` variable. Never log it, render it, or import the admin client into client components.
+ 
++Optional invitation request email notifications use server-only variables. Leave these blank to store login-page requests without sending email:
++
++```bash
++INVITE_REQUEST_NOTIFY_EMAIL=owner@example.com
++INVITE_REQUEST_FROM_EMAIL=Juniper Berry Productions <noreply@example.com>
++RESEND_API_KEY=your-resend-api-key
++```
++
++Do not put email provider keys in any `NEXT_PUBLIC_` variable.
++
+ 4. Start the app:
+ 
+ ```bash
+@@ -257,3 +268,17 @@
+ Owner/Admin users can view the latest account activity in Settings -> Team. Producer/Viewer users do not have access to the account activity table or the Settings -> Team page.
+ 
+ Account activity records never include passwords, temporary passwords, auth tokens, service-role keys, or raw secret values. Notification delivery is intentionally not implemented yet. Future options include Owner/Admin email notifications, a daily digest, Slack/Discord webhooks, and SMS later.
++
++## Invitation Requests Alpha
++
++The app remains invite-only. The login page includes a `Request an invitation` form for people who do not have accounts. Submitting the form creates an `invite_requests` row for Owner/Admin review; it does not create an Auth user, does not send a Supabase invite, and does not reveal whether the email already exists.
++
++Owner/Admin users can review pending requests in Settings -> Team and mark them reviewed, declined, or spam. Producer and Viewer users cannot access invitation requests.
++
++Public login-page requests use an app-level request model with `organization_id` left blank because the requester is not signed in and may not know which organization should approve them. In the current controlled-beta deployment, Owner/Admin users review those pending app-level requests from Settings -> Team.
++
++Invitation request notification email is optional. If `INVITE_REQUEST_NOTIFY_EMAIL`, `INVITE_REQUEST_FROM_EMAIL`, and `RESEND_API_KEY` are configured, the server action sends a Resend email to the configured admin address. If any variable is missing or email delivery fails, the request is still stored and the requester sees the same neutral success message.
++
++Invitation request submissions are represented by the stored request row and a minimal server log line named `invite_request.submitted`. Owner/Admin review actions are written to `audit_log` as `invite_request.reviewed`, `invite_request.declined`, or `invite_request.marked_spam`.
++
++Invitation requests never log passwords, temporary passwords, tokens, service-role keys, or email API keys.
+--- /Users/azapp/CodexProjects/_github-comparison/production-company/DEPLOYMENT_CHECKLIST.md	2026-06-11 15:46:56
++++ /Users/azapp/CodexProjects/production-company/DEPLOYMENT_CHECKLIST.md	2026-06-11 15:31:37
+@@ -9,6 +9,8 @@
+ - [ ] Confirm authenticated users can select only active-organization audit rows and cannot directly insert/update/delete audit rows.
+ - [ ] Apply `202606070900_deletion_safety_restore_alpha.sql` before verifying deletion safety in production.
+ - [ ] Apply Receipts & Invoices Alpha migration and confirm `public.budget_item_documents` exists.
++- [ ] Apply Invitation Requests Alpha migration and confirm `public.invite_requests` exists with RLS enabled.
++- [ ] Confirm Owner/Admin can read/update invitation requests and Producer/Viewer cannot.
+ - [ ] Confirm private Storage bucket `financial-documents` exists, is not public, uses a 10 MB limit, and allows PDF, PNG, JPG/JPEG, WEBP, CSV, and XLSX.
+ - [ ] Smoke test archive/restore for one event, one budget item, one revenue item, and one ticket tier as Owner/Admin.
+ - [ ] Smoke test budget item document upload, signed download, status change, archive, restore, and Activity rows as Owner/Admin.
+@@ -33,6 +35,8 @@
+ - [ ] Confirm no service role key appears in browser/client code or logs.
+ - [ ] Set the same public Supabase variables in Vercel Project Settings.
+ - [ ] Set `SUPABASE_SERVICE_ROLE_KEY` in Vercel Project Settings for Preview/Production before testing Team invites.
++- [ ] Optional: set `INVITE_REQUEST_NOTIFY_EMAIL`, `INVITE_REQUEST_FROM_EMAIL`, and `RESEND_API_KEY` in Vercel to send invitation request notifications.
++- [ ] Confirm `RESEND_API_KEY` is never prefixed with `NEXT_PUBLIC_`.
+ 
+ ## Vercel
+ 
+@@ -45,6 +49,8 @@
+ - [ ] Smoke test preview URL.
+ - [ ] In the deployed app, make one event or budget change and confirm the event `Activity` tab shows the audit row.
+ - [ ] In the deployed app, upload one small test receipt/invoice and confirm the event `Activity` tab shows the financial document audit row.
++- [ ] Submit one login-page invitation request and confirm it appears in Settings > Team for Owner/Admin.
++- [ ] If invitation request email env vars are configured, confirm the notification email arrives.
+ - [ ] Confirm no signed URLs, file contents, service-role keys, passwords, temporary passwords, tokens, or raw secrets appear in browser console, audit rows, or Vercel logs.
+ - [ ] Promote to production when preview is clean.
+ 
+--- /Users/azapp/CodexProjects/_github-comparison/production-company/TESTING_CHECKLIST.md	2026-06-11 15:46:56
++++ /Users/azapp/CodexProjects/production-company/TESTING_CHECKLIST.md	2026-06-11 15:31:37
+@@ -3,6 +3,12 @@
+ ## Auth
+ 
+ - [ ] Visit `/login` while logged out.
++- [ ] Confirm `/login` subtitle says `Event Command Center`.
++- [ ] Open `Request an invitation` from `/login`.
++- [ ] Submit the invitation request form with an invalid email and confirm validation prevents submission.
++- [ ] Submit a valid invitation request and confirm the neutral success message appears.
++- [ ] Submit a duplicate invitation request and confirm the response does not reveal whether the email exists or already requested access.
++- [ ] Confirm invitation requests do not create Supabase Auth users or automatically invite accounts.
+ - [ ] Sign in with a valid Supabase Auth user.
+ - [ ] Confirm logged-out access to `/dashboard` redirects to `/login`.
+ - [ ] Confirm a signed-in user without a profile row redirects to `/onboarding`.
+@@ -107,6 +113,21 @@
+ - [ ] Confirm Recent Access Activity shows the latest 20 events with timestamp, user/email, event type, and description.
+ - [ ] Confirm no passwords, temporary passwords, service keys, auth tokens, or secrets appear in `auth_activity.metadata`.
+ - [ ] Confirm browser console has no app runtime errors while viewing Settings -> Team.
++
++## Invitation Requests Alpha
++
++- [ ] Apply the Invitation Requests Alpha migration and confirm `public.invite_requests` exists with RLS enabled.
++- [ ] Confirm anonymous login-page users can submit a request through the server action.
++- [ ] Confirm anonymous users cannot read invitation requests.
++- [ ] Confirm Owner/Admin sees pending requests in Settings -> Team.
++- [ ] Confirm Owner/Admin can mark an invitation request reviewed.
++- [ ] Confirm Owner/Admin can mark an invitation request declined.
++- [ ] Confirm Owner/Admin can mark an invitation request spam.
++- [ ] Confirm invitation request review actions create `invite_request.reviewed`, `invite_request.declined`, or `invite_request.marked_spam` audit rows.
++- [ ] Confirm Producer/Viewer cannot access Settings -> Team or invitation requests.
++- [ ] Confirm removed/disabled users cannot access invitation requests.
++- [ ] Confirm configured Resend notification email arrives, or if email env vars are missing, the request still saves and the user still sees the neutral success message.
++- [ ] Confirm no Resend API key, service-role key, passwords, temporary passwords, tokens, or raw secrets appear in client code, browser console, audit rows, or logs.
+ 
+ ## Dashboard
+ 

@@ -36,6 +36,22 @@ export type AuthActivityRecord = {
   created_at: string;
 };
 
+export type InviteRequestStatus = "pending" | "reviewed" | "invited" | "declined" | "spam";
+
+export type InviteRequestRecord = {
+  id: string;
+  organization_id: string | null;
+  full_name: string;
+  email: string;
+  company: string | null;
+  message: string | null;
+  status: InviteRequestStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
 export type EventRecord = {
   id: string;
   organization_id: string;
